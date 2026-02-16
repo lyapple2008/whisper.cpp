@@ -960,6 +960,7 @@ static void output_lrc(struct whisper_context * ctx, std::ofstream & fout, const
 static void cb_log_disable(enum ggml_log_level , const char * , void * ) { }
 
 int main(int argc, char ** argv) {
+    // mars-todo: 这里是做什么的？
     ggml_backend_load_all();
 
 #if defined(_WIN32)
@@ -1000,6 +1001,8 @@ int main(int argc, char ** argv) {
         }
     }
 
+    // params.model: 模型文件路径
+    // params.fname_inp: 音频文件路径
     if (whisper_params_parse(argc, argv, params) == false) {
         whisper_print_usage(argc, argv, params);
         return 1;
@@ -1024,12 +1027,15 @@ int main(int argc, char ** argv) {
         return 2;
     }
 
+    // params.language: 语言，默认值为"en"
     if (params.language != "auto" && whisper_lang_id(params.language.c_str()) == -1) {
         fprintf(stderr, "error: unknown language '%s'\n", params.language.c_str());
         whisper_print_usage(argc, argv, params);
         exit(0);
     }
 
+    // diarize：基于立体声能量差异，需要双声道音频，简单但依赖声道分离
+    // tinydiarize：基于模型检测，需要支持 TDRZ 的模型，可处理单声道，更智能
     if (params.diarize && params.tinydiarize) {
         fprintf(stderr, "error: cannot use both --diarize and --tinydiarize\n");
         whisper_print_usage(argc, argv, params);
@@ -1047,6 +1053,7 @@ int main(int argc, char ** argv) {
     cparams.gpu_device = params.gpu_device;
     cparams.flash_attn = params.flash_attn;
 
+    // mars-todo: 音频对齐DTW
     if (!params.dtw.empty()) {
         cparams.dtw_token_timestamps = true;
         cparams.dtw_aheads_preset = WHISPER_AHEADS_NONE;
@@ -1070,6 +1077,9 @@ int main(int argc, char ** argv) {
         }
     }
 
+    // mars-note: 从模型文件加载模型参数，gguf模型文件只包含了模型参数，没有模型结构效果，
+    // 因此gguf模型中具体包含的信息与模型转换脚本保持一致，
+    // 加载过程也不是统一的，这个有别于onnx runtime一类模型文件中同时包含了模型结构和参数的推理框架。
     struct whisper_context * ctx = whisper_init_from_file_with_params(params.model.c_str(), cparams);
 
     if (ctx == nullptr) {
@@ -1080,6 +1090,7 @@ int main(int argc, char ** argv) {
     // initialize openvino encoder. this has no effect on whisper.cpp builds that don't have OpenVINO configured
     whisper_ctx_init_openvino_encoder(ctx, nullptr, params.openvino_encode_device.c_str(), nullptr);
 
+    // mars-note: params.grammar: 通过 GBNF 语法约束解码，确保输出符合指定格式，适用于需要结构化或受限输出的场景。
     if (!params.grammar.empty()) {
         auto & grammar = params.grammar_parsed;
         if (is_file_exist(params.grammar.c_str())) {
@@ -1103,6 +1114,7 @@ int main(int argc, char ** argv) {
         }
     }
 
+    // 遍历音频文件路径
     for (int f = 0; f < (int) params.fname_inp.size(); ++f) {
         const auto & fname_inp = params.fname_inp[f];
         struct fout_factory {
@@ -1157,11 +1169,18 @@ int main(int argc, char ** argv) {
         std::vector<float> pcmf32;               // mono-channel F32 PCM
         std::vector<std::vector<float>> pcmf32s; // stereo-channel F32 PCM
 
+        // mars-note: 是否支持流式音频处理？
+        // 通过以下方式改善流式处理效果下降问题
+        // 1. 启用 --keep-context 保持上下文
+        // 2. 使用 VAD 模式在自然停顿处分段
+        // 3. 调整块大小和重叠区域
+        // 读取音频PCM数据，pcmf32: 单声道PCM数据，pcmf32s: 立体声PCM数据
         if (!::read_audio_data(fname_inp, pcmf32, pcmf32s, params.diarize)) {
             fprintf(stderr, "error: failed to read audio file '%s'\n", fname_inp.c_str());
             continue;
         }
 
+        // 只支持翻译到英语
         if (!whisper_is_multilingual(ctx)) {
             if (params.language != "en" || params.translate) {
                 params.language = "en";
@@ -1199,6 +1218,9 @@ int main(int argc, char ** argv) {
 
         // run the inference
         {
+            // mars-note:
+            // greedy search: 每次选择概率最高的下一个token，速度快但可能错过更优解。
+            // beam search: 保留多个候选序列，考虑更多可能性，通常效果更好但计算量大。
             whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
 
             const bool use_grammar = (!params.grammar_parsed.rules.empty() && !params.grammar_rule.empty());

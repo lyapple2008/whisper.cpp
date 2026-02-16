@@ -41,6 +41,7 @@ struct whisper_params {
     std::string language  = "en";
     std::string model     = "models/ggml-base.en.bin";
     std::string fname_out;
+    std::string fname_in;  // input audio file for testing
 };
 
 void whisper_print_usage(int argc, char ** argv, const whisper_params & params);
@@ -70,6 +71,7 @@ static bool whisper_params_parse(int argc, char ** argv, whisper_params & params
         else if (arg == "-l"    || arg == "--language")      { params.language      = argv[++i]; }
         else if (arg == "-m"    || arg == "--model")         { params.model         = argv[++i]; }
         else if (arg == "-f"    || arg == "--file")          { params.fname_out     = argv[++i]; }
+        else if (arg == "-i"    || arg == "--input")         { params.fname_in      = argv[++i]; }
         else if (arg == "-tdrz" || arg == "--tinydiarize")   { params.tinydiarize   = true; }
         else if (arg == "-sa"   || arg == "--save-audio")    { params.save_audio    = true; }
         else if (arg == "-ng"   || arg == "--no-gpu")        { params.use_gpu       = false; }
@@ -109,6 +111,7 @@ void whisper_print_usage(int /*argc*/, char ** argv, const whisper_params & para
     fprintf(stderr, "  -l LANG,  --language LANG [%-7s] spoken language\n",                                params.language.c_str());
     fprintf(stderr, "  -m FNAME, --model FNAME   [%-7s] model path\n",                                     params.model.c_str());
     fprintf(stderr, "  -f FNAME, --file FNAME    [%-7s] text output file name\n",                          params.fname_out.c_str());
+    fprintf(stderr, "  -i FNAME, --input FNAME   [%-7s] input audio file (WAV) for testing\n",              params.fname_in.empty() ? "" : params.fname_in.c_str());
     fprintf(stderr, "  -tdrz,    --tinydiarize   [%-7s] enable tinydiarize (requires a tdrz model)\n",     params.tinydiarize ? "true" : "false");
     fprintf(stderr, "  -sa,      --save-audio    [%-7s] save the recorded audio to a file\n",              params.save_audio ? "true" : "false");
     fprintf(stderr, "  -ng,      --no-gpu        [%-7s] disable GPU inference\n",                          params.use_gpu ? "false" : "true");
@@ -143,14 +146,28 @@ int main(int argc, char ** argv) {
     params.max_tokens     = 0;
 
     // init audio
+    bool use_file_input = !params.fname_in.empty();
+    std::vector<float> audio_file_data;
+    size_t audio_file_pos = 0;
 
     audio_async audio(params.length_ms);
-    if (!audio.init(params.capture_id, WHISPER_SAMPLE_RATE)) {
-        fprintf(stderr, "%s: audio.init() failed!\n", __func__);
-        return 1;
+    if (!use_file_input) {
+        if (!audio.init(params.capture_id, WHISPER_SAMPLE_RATE)) {
+            fprintf(stderr, "%s: audio.init() failed!\n", __func__);
+            return 1;
+        }
+        audio.resume();
+    } else {
+        // load audio file
+        std::vector<std::vector<float>> pcmf32s;
+        if (!read_audio_data(params.fname_in, audio_file_data, pcmf32s, false)) {
+            fprintf(stderr, "%s: failed to load audio file '%s'\n", __func__, params.fname_in.c_str());
+            return 1;
+        }
+        fprintf(stderr, "%s: loaded audio file '%s' (%zu samples, %.2f seconds)\n", 
+                __func__, params.fname_in.c_str(), audio_file_data.size(), 
+                float(audio_file_data.size()) / WHISPER_SAMPLE_RATE);
     }
-
-    audio.resume();
 
     // whisper init
     if (params.language != "auto" && whisper_lang_id(params.language.c_str()) == -1){
@@ -230,7 +247,11 @@ int main(int argc, char ** argv) {
 
         wavWriter.open(filename, WHISPER_SAMPLE_RATE, 16, 1);
     }
-    printf("[Start speaking]\n");
+    if (use_file_input) {
+        printf("[Processing audio file: %s]\n", params.fname_in.c_str());
+    } else {
+        printf("[Start speaking]\n");
+    }
     fflush(stdout);
 
     auto t_last  = std::chrono::high_resolution_clock::now();
@@ -251,26 +272,42 @@ int main(int argc, char ** argv) {
         // process new audio
 
         if (!use_vad) {
-            while (true) {
-                // handle Ctrl + C
-                is_running = sdl_poll_events();
-                if (!is_running) {
+            if (use_file_input) {
+                // read from file
+                if (audio_file_pos >= audio_file_data.size()) {
+                    // end of file
                     break;
                 }
-                audio.get(params.step_ms, pcmf32_new);
+                
+                const size_t samples_to_read = std::min((size_t)n_samples_step, audio_file_data.size() - audio_file_pos);
+                pcmf32_new.resize(samples_to_read);
+                memcpy(pcmf32_new.data(), audio_file_data.data() + audio_file_pos, samples_to_read * sizeof(float));
+                audio_file_pos += samples_to_read;
+                
+                // simulate real-time processing delay
+                std::this_thread::sleep_for(std::chrono::milliseconds(params.step_ms));
+            } else {
+                while (true) {
+                    // handle Ctrl + C
+                    is_running = sdl_poll_events();
+                    if (!is_running) {
+                        break;
+                    }
+                    audio.get(params.step_ms, pcmf32_new);
 
-                if ((int) pcmf32_new.size() > 2*n_samples_step) {
-                    fprintf(stderr, "\n\n%s: WARNING: cannot process audio fast enough, dropping audio ...\n\n", __func__);
-                    audio.clear();
-                    continue;
+                    if ((int) pcmf32_new.size() > 2*n_samples_step) {
+                        fprintf(stderr, "\n\n%s: WARNING: cannot process audio fast enough, dropping audio ...\n\n", __func__);
+                        audio.clear();
+                        continue;
+                    }
+
+                    if ((int) pcmf32_new.size() >= n_samples_step) {
+                        audio.clear();
+                        break;
+                    }
+
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
-
-                if ((int) pcmf32_new.size() >= n_samples_step) {
-                    audio.clear();
-                    break;
-                }
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
 
             const int n_samples_new = pcmf32_new.size();
@@ -290,26 +327,54 @@ int main(int argc, char ** argv) {
 
             pcmf32_old = pcmf32;
         } else {
-            const auto t_now  = std::chrono::high_resolution_clock::now();
-            const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
-
-            if (t_diff < 2000) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-                continue;
-            }
-
-            audio.get(2000, pcmf32_new);
-
-            if (::vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
-                audio.get(params.length_ms, pcmf32);
+            if (use_file_input) {
+                // VAD mode with file input
+                if (audio_file_pos >= audio_file_data.size()) {
+                    // end of file
+                    break;
+                }
+                
+                // read 2 seconds for VAD check
+                const size_t vad_samples = std::min((size_t)(2000 * WHISPER_SAMPLE_RATE / 1000), audio_file_data.size() - audio_file_pos);
+                pcmf32_new.resize(vad_samples);
+                memcpy(pcmf32_new.data(), audio_file_data.data() + audio_file_pos, vad_samples * sizeof(float));
+                
+                if (::vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
+                    // read full length for processing
+                    const size_t length_samples = std::min((size_t)n_samples_len, audio_file_data.size() - audio_file_pos);
+                    pcmf32.resize(length_samples);
+                    memcpy(pcmf32.data(), audio_file_data.data() + audio_file_pos, length_samples * sizeof(float));
+                    audio_file_pos += length_samples;
+                } else {
+                    // skip ahead if no voice activity
+                    audio_file_pos += vad_samples;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+                
+                t_last = std::chrono::high_resolution_clock::now();
             } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                const auto t_now  = std::chrono::high_resolution_clock::now();
+                const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
 
-                continue;
+                if (t_diff < 2000) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                    continue;
+                }
+
+                audio.get(2000, pcmf32_new);
+
+                if (::vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
+                    audio.get(params.length_ms, pcmf32);
+                } else {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                    continue;
+                }
+
+                t_last = t_now;
             }
-
-            t_last = t_now;
         }
 
         // run the inference
@@ -428,7 +493,9 @@ int main(int argc, char ** argv) {
         }
     }
 
-    audio.pause();
+    if (!use_file_input) {
+        audio.pause();
+    }
 
     whisper_print_timings(ctx);
     whisper_free(ctx);

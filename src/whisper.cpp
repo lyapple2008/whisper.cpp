@@ -6829,6 +6829,7 @@ int whisper_full_with_state(
         }
     }
 
+    // mars-todo: 语言检测是如何实现的？
     // auto-detect language if not specified
     if (params.language == nullptr || strlen(params.language) == 0 || strcmp(params.language, "auto") == 0 || params.detect_language) {
         std::vector<float> probs(whisper_lang_max_id() + 1, 0.0f);
@@ -6869,6 +6870,13 @@ int whisper_full_with_state(
         return 0;
     }
 
+    // mars-todo: 温度控制（Temperature Control）
+    // 作用：控制温度回退的步长，用于在解码失败时自动提高温度重试
+    // 机制：从初始温度开始，按步长递增，直到解码成功或达到上限
+    // 目的：提高解码成功率，处理困难音频片段
+    // 默认值：0.2
+    // 禁用：设置 temperature_inc = 0 或使用 --no-fallback
+    // 这是一个自动容错机制，在低温度解码失败时，通过提高温度增加采样多样性，提高成功率。
     // a set of temperatures to use
     // [ t0, t0 + delta, t0 + 2*delta, ..., < 1.0f + 1e-6f ]
     std::vector<float> temperatures;

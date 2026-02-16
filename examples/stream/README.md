@@ -8,6 +8,16 @@ More info is available in [issue #10](https://github.com/ggerganov/whisper.cpp/i
 ./build/bin/whisper-stream -m ./models/ggml-base.en.bin -t 8 --step 500 --length 5000
 ```
 
+## Testing with audio file
+
+You can test the stream processing with a WAV audio file instead of microphone input:
+
+```bash
+./build/bin/whisper-stream -m ./models/ggml-base.en.bin -i ./samples/jfk.wav -t 8 --step 500 --length 5000
+```
+
+The `-i` or `--input` option specifies the input audio file. The tool will process the file in chunks, simulating real-time streaming behavior. This is useful for testing and debugging the stream processing logic without needing a microphone.
+
 https://user-images.githubusercontent.com/1991296/194935793-76afede7-cfa8-48d8-a80f-28ba83be7d09.mp4
 
 ## Sliding window mode with VAD
