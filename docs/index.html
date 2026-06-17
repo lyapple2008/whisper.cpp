@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>whisper.cpp 项目介绍</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --code-bg: #1e293b;
+            --code-text: #e2e8f0;
+            --accent: #0ea5e9;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            line-height: 1.7;
+            color: var(--text);
+            background: var(--bg);
+            padding: 0;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #0ea5e9 100%);
+            color: white;
+            padding: 80px 20px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            opacity: 0.95;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        .badges {
+            margin-top: 24px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .badge {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        section {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        h2 {
+            font-size: 1.875rem;
+            color: var(--primary-dark);
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        h3 {
+            font-size: 1.25rem;
+            color: var(--text);
+            margin: 20px 0 12px 0;
+        }
+
+        p, li {
+            color: var(--text);
+            margin-bottom: 12px;
+        }
+
+        ul, ol {
+            padding-left: 24px;
+            margin-bottom: 12px;
+        }
+
+        li {
+            margin-bottom: 6px;
+        }
+
+        code {
+            background: #f1f5f9;
+            color: #be123c;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: "SF Mono", Monaco, Consolas, "Courier New", monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 16px 0;
+            font-family: "SF Mono", Monaco, Consolas, "Courier New", monospace;
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+
+        pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+
+        .feature-card {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .feature-card .icon {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
+        .feature-card h4 {
+            color: var(--primary-dark);
+            margin-bottom: 6px;
+            font-size: 1rem;
+        }
+
+        .feature-card p {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        .tree {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 20px;
+            border-radius: 8px;
+            font-family: "SF Mono", Monaco, Consolas, monospace;
+            font-size: 0.875rem;
+            line-height: 1.8;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .tree .comment {
+            color: #94a3b8;
+        }
+
+        .tree .dir {
+            color: #60a5fa;
+            font-weight: 600;
+        }
+
+        .tree .file {
+            color: #fbbf24;
+        }
+
+        .module-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+
+        .module-table th,
+        .module-table td {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .module-table th {
+            background: #f1f5f9;
+            color: var(--primary-dark);
+            font-weight: 600;
+        }
+
+        .module-table td:first-child {
+            font-family: "SF Mono", Monaco, Consolas, monospace;
+            color: var(--primary);
+            font-size: 0.9em;
+        }
+
+        .flow {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            margin: 20px 0;
+        }
+
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: linear-gradient(90deg, #eff6ff 0%, #ffffff 100%);
+            border-left: 4px solid var(--primary);
+            padding: 16px 20px;
+            border-radius: 4px;
+        }
+
+        .flow-step .num {
+            flex-shrink: 0;
+            width: 36px;
+            height: 36px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .flow-step .content {
+            flex: 1;
+        }
+
+        .flow-step h4 {
+            color: var(--primary-dark);
+            margin-bottom: 4px;
+        }
+
+        .flow-step p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        .flow-arrow {
+            text-align: center;
+            color: var(--primary);
+            font-size: 1.5rem;
+            padding: 4px 0;
+        }
+
+        .platforms {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 12px 0;
+        }
+
+        .platform-tag {
+            background: #ecfdf5;
+            color: #047857;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            border: 1px solid #a7f3d0;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 640px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+            section {
+                padding: 20px;
+            }
+            h2 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<header class="hero">
+    <h1>whisper.cpp</h1>
+    <p>OpenAI Whisper 语音识别模型的高性能 C/C++ 推理实现</p>
+    <div class="badges">
+        <span class="badge">v1.9.0</span>
+        <span class="badge">MIT License</span>
+        <span class="badge">跨平台</span>
+        <span class="badge">零依赖</span>
+        <span class="badge">多后端 GPU 加速</span>
+    </div>
+</header>
+
+<main class="container">
+
+    <section>
+        <h2>1. 项目背景</h2>
+        <p>
+            <strong>whisper.cpp</strong> 是 GitHub 用户 <code>ggerganov</code>（GGML 作者）于 2022 年开源的项目，
+            旨在将 OpenAI 于同年发布的 <strong>Whisper</strong> 语音识别（ASR, Automatic Speech Recognition）模型
+            高效地移植到各种平台和设备上。
+        </p>
+        <p>
+            OpenAI 官方发布的 Whisper 模型基于 PyTorch，体积庞大、依赖繁重，难以部署在边缘设备或嵌入式场景中。
+            whisper.cpp 基于自研的轻量级张量库 <a href="https://github.com/ggml-org/ggml" style="color: var(--primary);">GGML</a>，
+            以纯 C/C++ 重写了整个推理流程，对 Apple Silicon、x86 CPU、CUDA、Metal、Vulkan、OpenCL、SYCL 等多种硬件做了深度优化。
+        </p>
+        <h3>项目里程碑</h3>
+        <ul>
+            <li><strong>2022 年 9 月</strong>：项目开源，迅速在 GitHub 获得数万 Star</li>
+            <li><strong>2023 年</strong>：陆续加入 Metal、CUDA、CoreML、Vulkan 等硬件后端</li>
+            <li><strong>2024–2025 年</strong>：持续迭代，发布 v1.7/v1.8/v1.9 多个稳定版本</li>
+            <li><strong>当前</strong>：已成为嵌入式、端侧、跨平台语音识别的事实标准方案</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>2. 解决什么问题</h2>
+        <p>whisper.cpp 主要解决以下几类核心问题：</p>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="icon">📦</div>
+                <h4>依赖臃肿</h4>
+                <p>PyTorch 部署包动辄数百 MB，whisper.cpp 仅需几 MB 即可运行</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">📱</div>
+                <h4>端侧部署</h4>
+                <p>让 Whisper 模型可以在手机、嵌入式设备、树莓派上离线运行</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🚀</div>
+                <h4>推理性能</h4>
+                <p>通过 GGML 的量化与算子融合，提供接近实时的转录速度</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔌</div>
+                <h4>多语言集成</h4>
+                <p>提供 C API 及 Go/Java/JS/Ruby 等绑定，方便集成到各类应用</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔒</div>
+                <h4>隐私合规</h4>
+                <p>完全本地离线推理，语音数据无需上传云端</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">💰</div>
+                <h4>推理成本</h4>
+                <p>无需 GPU 服务器，使用普通 CPU 即可完成语音转文字</p>
+            </div>
+        </div>
+
+        <h3>典型应用场景</h3>
+        <ul>
+            <li><strong>实时语音转写</strong>：会议记录、字幕生成、采访整理</li>
+            <li><strong>离线语音助手</strong>：智能音箱、车机系统、家居设备</li>
+            <li><strong>辅助工具</strong>：为听障人士提供实时字幕</li>
+            <li><strong>开发者集成</strong>：将语音能力嵌入移动 App、桌面软件、游戏中</li>
+            <li><strong>批处理转录</strong>：对历史音频资料进行批量转写</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>3. 项目框架结构</h2>
+        <p>项目采用"核心集中 + 平台后端可插拔"的设计理念，主要目录结构如下：</p>
+
+        <div class="tree">
+<span class="dir">whisper.cpp/</span>
+├── <span class="dir">include/</span>           <span class="comment"># 公共头文件</span>
+│   └── <span class="file">whisper.h</span>         <span class="comment"># 主头文件 (C API)</span>
+├── <span class="dir">src/</span>               <span class="comment"># 核心源代码</span>
+│   ├── <span class="file">whisper.cpp</span>       <span class="comment"># 主实现文件 (~330KB)</span>
+│   ├── <span class="file">whisper-arch.h</span>    <span class="comment"># 模型架构定义</span>
+│   ├── <span class="dir">coreml/</span>          <span class="comment"># Apple CoreML 后端</span>
+│   └── <span class="dir">openvino/</span>        <span class="comment"># Intel OpenVINO 后端</span>
+├── <span class="dir">ggml/</span>             <span class="comment"># GGML 机器学习库 (子模块)</span>
+│   ├── <span class="dir">include/</span>         <span class="comment"># GGML 头文件</span>
+│   ├── <span class="dir">src/</span>             <span class="comment"># CPU/CUDA/Metal/Vulkan 等后端</span>
+│   └── <span class="dir">cmake/</span>           <span class="comment"># GGML CMake 配置</span>
+├── <span class="dir">examples/</span>          <span class="comment"># 示例程序</span>
+│   ├── <span class="dir">cli/</span>            <span class="comment"># whisper-cli 命令行工具</span>
+│   ├── <span class="dir">stream/</span>         <span class="comment"># 实时流式转录</span>
+│   ├── <span class="dir">server/</span>         <span class="comment"># HTTP REST 服务器</span>
+│   ├── <span class="dir">bench/</span>          <span class="comment"># 性能基准测试</span>
+│   ├── <span class="dir">command/</span>        <span class="comment"># 语音命令识别</span>
+│   ├── <span class="dir">quantize/</span>       <span class="comment"># 模型量化工具</span>
+│   └── <span class="dir">whisper.wasm/</span>   <span class="comment"># WebAssembly 版本</span>
+├── <span class="dir">bindings/</span>          <span class="comment"># 多语言绑定</span>
+│   ├── <span class="dir">go/</span> <span class="dir">java/</span> <span class="dir">javascript/</span> <span class="dir">ruby/</span>
+├── <span class="dir">tests/</span>             <span class="comment"># 测试代码与测试数据</span>
+├── <span class="dir">models/</span>            <span class="comment"># 模型下载脚本与说明</span>
+├── <span class="dir">samples/</span>           <span class="comment"># 音频样本 (jfk.wav 等)</span>
+├── <span class="dir">cmake/</span>             <span class="comment"># 平台特定 CMake 配置</span>
+├── <span class="file">CMakeLists.txt</span>    <span class="comment"># 主构建文件</span>
+└── <span class="file">Makefile</span>          <span class="comment"># 简化构建脚本</span>
+        </div>
+    </section>
+
+    <section>
+        <h2>4. 核心模块</h2>
+
+        <h3>4.1 核心库模块（src/）</h3>
+        <table class="module-table">
+            <thead>
+                <tr><th>模块</th><th>职责</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>whisper.cpp / whisper.h</td><td>主实现与 C API，封装所有对外接口</td></tr>
+                <tr><td>whisper-arch.h</td><td>张量名称映射、编码器/解码器结构定义</td></tr>
+                <tr><td>whisper_mel</td><td>Mel 频谱特征数据结构</td></tr>
+                <tr><td>whisper_filters</td><td>音频滤波器配置（80 通道 Mel 滤波器组）</td></tr>
+                <tr><td>whisper_vocab</td><td>词汇表、token 映射、BPE 编码</td></tr>
+                <tr><td>whisper_segment</td><td>转录结果片段（开始/结束时间、文本、token）</td></tr>
+                <tr><td>whisper_hparams</td><td>模型超参数（层数、维度、注意力头数等）</td></tr>
+                <tr><td>whisper_model</td><td>模型权重与计算图</td></tr>
+                <tr><td>whisper_context</td><td>推理上下文（模型 + 运行时配置）</td></tr>
+                <tr><td>whisper_state</td><td>推理状态（KV cache、当前位置等）</td></tr>
+                <tr><td>whisper_vad_context</td><td>语音活动检测（VAD）</td></tr>
+                <tr><td>coreml/</td><td>Apple Neural Engine 加速</td></tr>
+                <tr><td>openvino/</td><td>Intel OpenVINO 加速</td></tr>
+            </tbody>
+        </table>
+
+        <h3>4.2 GGML 张量库（ggml/）</h3>
+        <p>作为底层计算引擎，提供张量抽象与多种硬件后端：</p>
+        <table class="module-table">
+            <thead>
+                <tr><th>后端</th><th>适用场景</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>ggml-cpu</td><td>通用 CPU 推理（ARM NEON、AVX、VSX 优化）</td></tr>
+                <tr><td>ggml-cuda</td><td>NVIDIA GPU 推理</td></tr>
+                <tr><td>ggml-metal</td><td>Apple Silicon GPU 推理</td></tr>
+                <tr><td>ggml-vulkan</td><td>跨平台 GPU（Vulkan 1.2+）</td></tr>
+                <tr><td>ggml-opencl</td><td>跨平台 GPU（OpenCL）</td></tr>
+                <tr><td>ggml-sycl</td><td>Intel GPU 推理（SYCL）</td></tr>
+            </tbody>
+        </table>
+
+        <h3>4.3 应用示例模块（examples/）</h3>
+        <ul>
+            <li><strong>cli/</strong>：命令行转录工具 <code>whisper-cli</code>，最基础的使用方式</li>
+            <li><strong>stream/</strong>：实时流式转录，适合直播、麦克风输入</li>
+            <li><strong>server/</strong>：HTTP REST 服务器，提供 Web API</li>
+            <li><strong>bench/</strong>：性能基准测试工具，量化不同模型/后端速度</li>
+            <li><strong>command/</strong>：语音命令识别，自定义离线语音助手</li>
+            <li><strong>quantize/</strong>：模型量化工具（Q4_0、Q5_1、Q8_0 等）</li>
+            <li><strong>whisper.wasm/</strong>：浏览器端 WebAssembly 版本</li>
+            <li><strong>talk-llama/</strong>：与 LLaMA 等大语言模型联动</li>
+        </ul>
+
+        <h3>4.4 多语言绑定（bindings/）</h3>
+        <ul>
+            <li><strong>JavaScript/TypeScript</strong>：Node.js 与浏览器环境</li>
+            <li><strong>Go</strong>：服务端集成</li>
+            <li><strong>Java</strong>：Android 与桌面应用</li>
+            <li><strong>Ruby</strong>：脚本与 Web 服务</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>5. 运行流程</h2>
+        <p>whisper.cpp 的核心推理流程可以分为 <strong>六个阶段</strong>，从原始音频到文本输出：</p>
+
+        <div class="flow">
+            <div class="flow-step">
+                <div class="num">1</div>
+                <div class="content">
+                    <h4>音频输入与重采样</h4>
+                    <p>读取 WAV/PCM 原始音频，统一重采样到 16 kHz 单声道 float 格式</p>
+                </div>
+            </div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-step">
+                <div class="num">2</div>
+                <div class="content">
+                    <h4>Mel 频谱计算（whisper_pcm_to_mel）</h4>
+                    <p>对音频分帧、做短时傅里叶变换（STFT），应用 80 通道 Mel 滤波器组，输出 log-Mel 频谱</p>
+                </div>
+            </div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-step">
+                <div class="num">3</div>
+                <div class="content">
+                    <h4>编码器推理（whisper_encode）</h4>
+                    <p>使用 Transformer 编码器将 Mel 频谱编码为高维特征表示</p>
+                </div>
+            </div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-step">
+                <div class="num">4</div>
+                <div class="content">
+                    <h4>解码器自回归生成（whisper_decode）</h4>
+                    <p>使用交叉注意力机制逐 token 生成文本，支持多种采样策略（greedy、beam search、temperature sampling）</p>
+                </div>
+            </div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-step">
+                <div class="num">5</div>
+                <div class="content">
+                    <h4>特殊 token 解析</h4>
+                    <p>解析语言标记、时间戳、分段标记等特殊 token，定位转录起止时间</p>
+                </div>
+            </div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-step">
+                <div class="num">6</div>
+                <div class="content">
+                    <h4>输出分段文本</h4>
+                    <p>通过 <code>whisper_full_get_segment_text()</code> 获取每一段的转录结果</p>
+                </div>
+            </div>
+        </div>
+
+        <h3>5.1 完整调用示例（伪代码）</h3>
+        <pre><code>// 1. 初始化上下文
+struct whisper_context * ctx = whisper_init_from_file("models/ggml-base.en.bin");
+
+// 2. 配置推理参数
+struct whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+wparams.language = "en";
+wparams.translate = false;
+
+// 3. 准备音频（16 kHz, mono, float）
+std::vector&lt;float&gt; pcmf32 = read_wav("samples/jfk.wav");
+
+// 4. 执行完整转录（一站式调用）
+whisper_full(ctx, wparams, pcmf32.data(), pcmf32.size());
+
+// 5. 遍历输出分段
+const int n_segments = whisper_full_n_segments(ctx);
+for (int i = 0; i &lt; n_segments; ++i) {
+    const char * text = whisper_full_get_segment_text(ctx, i);
+    int64_t t0 = whisper_full_get_segment_t0(ctx, i);
+    int64_t t1 = whisper_full_get_segment_t1(ctx, i);
+    printf("[%lld --&gt; %lld] %s\n", t0, t1, text);
+}
+
+// 6. 释放资源
+whisper_free(ctx);</code></pre>
+
+        <h3>5.2 高级流程（可拆解）</h3>
+        <p>对于流式或自定义场景，可分步调用：</p>
+        <pre><code>// 音频 → Mel 频谱
+whisper_pcm_to_mel(ctx, pcm_data, n_samples, n_threads);
+
+// 手动设置 Mel
+whisper_set_mel(ctx, mel_data, n_len, n_mel);
+
+// 编码
+whisper_encode(ctx, n_threads);
+
+// 解码（多次调用，每次生成一个 token）
+whisper_decode(ctx, tokens, n_tokens, n_threads);
+
+// 采样
+whisper_sample_token(ctx, ...);</code></pre>
+    </section>
+
+    <section>
+        <h2>6. 支持的平台</h2>
+        <p>whisper.cpp 是真正的跨平台方案，覆盖从服务器到嵌入式设备的所有场景：</p>
+        <div class="platforms">
+            <span class="platform-tag">macOS (Intel)</span>
+            <span class="platform-tag">macOS (Apple Silicon)</span>
+            <span class="platform-tag">iOS</span>
+            <span class="platform-tag">Android</span>
+            <span class="platform-tag">Linux</span>
+            <span class="platform-tag">FreeBSD</span>
+            <span class="platform-tag">Windows (MSVC)</span>
+            <span class="platform-tag">Windows (MinGW)</span>
+            <span class="platform-tag">WebAssembly</span>
+            <span class="platform-tag">Raspberry Pi</span>
+            <span class="platform-tag">RISC-V</span>
+            <span class="platform-tag">POWER (VSX)</span>
+            <span class="platform-tag">Docker</span>
+        </div>
+
+        <h3>6.1 快速开始</h3>
+        <pre><code># 克隆仓库
+git clone https://github.com/ggml-org/whisper.cpp.git
+cd whisper.cpp
+
+# 下载 base.en 模型
+sh ./models/download-ggml-model.sh base.en
+
+# 构建项目
+cmake -B build
+cmake --build build -j --config Release
+
+# 转录音频
+./build/bin/whisper-cli -f samples/jfk.wav</code></pre>
+
+        <p>或者一行命令完成 <strong>下载 + 构建 + 测试</strong>：</p>
+        <pre><code>make base.en</code></pre>
+    </section>
+
+    <section>
+        <h2>7. 设计哲学总结</h2>
+        <ul>
+            <li><strong>单一高效实现</strong>：核心逻辑集中在 <code>whisper.cpp</code> 一个文件，便于阅读与移植</li>
+            <li><strong>清晰的 C API</strong>：所有功能通过 <code>whisper.h</code> 暴露，不引入 C++ 运行时</li>
+            <li><strong>零内存分配</strong>：推理时无动态内存分配，性能稳定可预测</li>
+            <li><strong>可插拔后端</strong>：CPU/GPU/专用芯片通过 GGML 统一抽象</li>
+            <li><strong>小体积量化模型</strong>：最低仅需 ~75 MB（tiny）即可启动推理</li>
+            <li><strong>开放生态</strong>：官方绑定覆盖主流语言，第三方集成丰富</li>
+        </ul>
+        <p style="margin-top: 16px;">
+            whisper.cpp 让我们能够在 <strong>任何设备</strong>、<strong>任何场景</strong>下，
+            享受 OpenAI Whisper 强大的多语言语音识别能力，
+            是当前最值得关注的开源语音识别项目之一。
+        </p>
+    </section>
+
+</main>
+
+<footer>
+    <p>whisper.cpp 项目介绍 · 基于 README.md 与 CLAUDE.md 整理 · 版本 v1.9.0</p>
+</footer>
+
+</body>
+</html>
