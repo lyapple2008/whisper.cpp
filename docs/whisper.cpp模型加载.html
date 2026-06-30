@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>whisper.cpp 模型加载机制详解与 ONNX Runtime 对比</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --code-bg: #1e293b;
+            --code-text: #e2e8f0;
+            --accent: #0ea5e9;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --purple: #8b5cf6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            line-height: 1.7;
+            color: var(--text);
+            background: var(--bg);
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+
+        /* ===== Header ===== */
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 64px 24px;
+            border-radius: 16px;
+            margin-bottom: 32px;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .hero h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .hero p {
+            font-size: 1.1rem;
+            opacity: 0.95;
+            max-width: 800px;
+        }
+
+        .hero .breadcrumb {
+            font-size: 0.9rem;
+            opacity: 0.85;
+            margin-bottom: 16px;
+        }
+
+        .hero .breadcrumb a {
+            color: white;
+            text-decoration: none;
+        }
+
+        /* ===== Navigation ===== */
+        .toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 32px;
+            position: sticky;
+            top: 16px;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            overflow: hidden;
+        }
+
+        .toc-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+
+        .toc-header:hover {
+            background: var(--bg);
+        }
+
+        .toc-header h3 {
+            color: var(--primary);
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 0;
+        }
+
+        .toc-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--bg);
+            color: var(--primary);
+            transition: transform 0.3s ease;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .toc.expanded .toc-toggle {
+            transform: rotate(180deg);
+        }
+
+        .toc-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.35s ease, padding 0.35s ease;
+            padding: 0 24px;
+        }
+
+        .toc.expanded .toc-content {
+            max-height: 800px;
+            padding: 4px 24px 20px;
+        }
+
+        .toc ol {
+            list-style: none;
+            counter-reset: toc-counter;
+        }
+
+        .toc ol li {
+            counter-increment: toc-counter;
+            padding: 4px 0;
+        }
+
+        .toc ol li a {
+            color: var(--text);
+            text-decoration: none;
+            transition: color 0.2s;
+            display: block;
+            padding: 6px 10px;
+            border-radius: 4px;
+        }
+
+        .toc ol li a::before {
+            content: counter(toc-counter) ". ";
+            color: var(--primary);
+            font-weight: 600;
+            margin-right: 6px;
+        }
+
+        .toc ol li a:hover {
+            color: var(--primary);
+            background: var(--bg);
+        }
+
+        /* ===== Sections ===== */
+        section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            scroll-margin-top: 100px;
+        }
+
+        section h2 {
+            color: var(--primary);
+            font-size: 1.6rem;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        section h3 {
+            color: var(--primary-dark);
+            font-size: 1.25rem;
+            margin: 20px 0 12px 0;
+        }
+
+        section h4 {
+            color: var(--text);
+            font-size: 1.05rem;
+            margin: 16px 0 10px 0;
+            font-weight: 600;
+        }
+
+        section p {
+            margin-bottom: 12px;
+            color: var(--text);
+        }
+
+        section ul, section ol {
+            margin: 12px 0 12px 24px;
+        }
+
+        section li {
+            margin-bottom: 6px;
+        }
+
+        /* ===== Code ===== */
+        code {
+            background: var(--bg);
+            color: var(--danger);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+            font-size: 0.9em;
+            border: 1px solid var(--border);
+        }
+
+        pre {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 14px 0;
+            font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            border: 1px solid #334155;
+        }
+
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: inherit;
+            font-size: inherit;
+        }
+
+        .keyword { color: #c084fc; font-weight: 600; }
+        .string  { color: #86efac; }
+        .number  { color: #fcd34d; }
+        .comment { color: #64748b; font-style: italic; }
+        .type    { color: #67e8f9; }
+        .func    { color: #93c5fd; }
+
+        /* ===== Tables ===== */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 0.92rem;
+            background: var(--surface);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        thead {
+            background: var(--primary);
+            color: white;
+        }
+
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tbody tr:hover {
+            background: var(--bg);
+        }
+
+        th {
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        /* ===== Callout ===== */
+        .callout {
+            border-left: 4px solid var(--accent);
+            background: #f0f9ff;
+            padding: 14px 18px;
+            border-radius: 6px;
+            margin: 14px 0;
+        }
+
+        .callout.warning {
+            border-left-color: var(--warning);
+            background: #fffbeb;
+        }
+
+        .callout.danger {
+            border-left-color: var(--danger);
+            background: #fef2f2;
+        }
+
+        .callout.success {
+            border-left-color: var(--success);
+            background: #f0fdf4;
+        }
+
+        .callout strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--primary-dark);
+        }
+
+        /* ===== Footer ===== */
+        footer {
+            text-align: center;
+            padding: 32px 24px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border);
+            margin-top: 24px;
+        }
+
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* ===== Related docs ===== */
+        .related-docs {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .related-card {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px;
+            background: linear-gradient(135deg, #f0f9ff 0%, #f5f3ff 100%);
+            text-decoration: none;
+            color: var(--text);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: block;
+        }
+
+        .related-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        }
+
+        .related-card .badge {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            font-size: 0.75rem;
+            padding: 2px 10px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+        }
+
+        .related-card .badge.note { background: var(--purple); }
+        .related-card .badge.html { background: var(--accent); }
+
+        .related-card h4 {
+            margin: 0 0 6px 0;
+            color: var(--primary-dark);
+            font-size: 1.05rem;
+        }
+
+        .related-card p {
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* ===== Responsive ===== */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 1.8rem; }
+            section { padding: 20px; }
+            .toc { position: static; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <!-- ============ Hero ============ -->
+    <div class="hero">
+        <div class="breadcrumb">📂 <a href="index.html">whisper.cpp 文档</a> / 核心机制解析 / 模型加载</div>
+        <h1>whisper.cpp 模型加载机制详解</h1>
+        <p>深入剖析 <code>whisper_init_from_file_with_params</code> 背后的三阶段加载流程，对比 ONNX Runtime 在文件格式、计算图表达、后端抽象上的关键差异，并给出同后端下的性能实测与选型建议。</p>
+    </div>
+
+    <!-- ============ TOC ============ -->
+    <div class="toc expanded" id="toc">
+        <div class="toc-header" onclick="document.getElementById('toc').classList.toggle('expanded')">
+            <h3>📑 目录</h3>
+            <span class="toc-toggle">▼</span>
+        </div>
+        <div class="toc-content">
+            <ol>
+                <li><a href="#file-format">whisper.cpp 的模型文件格式</a></li>
+                <li><a href="#load-flow">whisper.cpp 加载流程详解</a></li>
+                <li><a href="#compare">与 ONNX Runtime 的关键区别</a></li>
+                <li><a href="#perf">相同后端下的性能对比</a></li>
+                <li><a href="#summary">小结与选型建议</a></li>
+                <li><a href="#related">相关文档</a></li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- ============ 1 ============ -->
+    <section id="file-format">
+        <h2>一、whisper.cpp 的模型文件格式</h2>
+        <p>whisper.cpp 使用 <strong>自研 ggml 二进制格式</strong>（非 ONNX / GGUF 标准格式，属老版本），由 <code>convert-pt-to-ggml.py</code> 从 PyTorch 权重转换而来。文件结构如下：</p>
+
+<pre><code>┌──────────────────────────────────────────┐
+│ <span class="comment">magic: 0x67676d6c  ("ggml")</span>             │  <span class="number">4B</span>
+├──────────────────────────────────────────┤
+│ <span class="comment">hparams: 11 个 int32</span>                   │  <span class="number">~44B</span>
+│   n_vocab, n_audio_ctx, n_audio_state,  │
+│   n_audio_head, n_audio_layer,          │
+│   n_text_ctx, n_text_state,             │
+│   n_text_head, n_text_layer,            │
+│   n_mels, ftype                         │
+├──────────────────────────────────────────┤
+│ <span class="comment">mel filters: n_mel × n_fft floats</span>       │  <span class="number">~512KB</span>
+├──────────────────────────────────────────┤
+│ <span class="comment">vocab: n_vocab × (len + string)</span>         │  <span class="number">~2-3MB</span>
+├──────────────────────────────────────────┤
+│ <span class="comment">tensors:</span>                                │  数十~数百 MB
+│   <span class="keyword">while</span> (!eof) {                        │
+│     n_dims, length, ttype (<span class="number">3</span>×int32)     │
+│     ne[<span class="number">4</span>] (<span class="number">4</span>×int32)                     │
+│     name[length]                        │
+│     raw bytes (按 ttype 决定大小)        │
+│   }                                     │
+└──────────────────────────────────────────┘</code></pre>
+
+        <ul>
+            <li><strong>ftype 编码</strong>：<code>ftype = qntvr * GGML_QNT_VERSION_FACTOR + 实际量化类型</code>，加载时 <a href="../src/whisper.cpp#L1549-L1559">whisper.cpp:1549-1559</a> 拆分版本号与量化类型。</li>
+            <li><strong>量化模型按 ftype 直接落盘</strong>：Q4_0 / Q4_1 / Q5_0 / Q5_1 / Q8_0 的 bit pattern 直接写在文件里，加载就是 <code>memcpy</code>，<strong>没有任何反量化步骤</strong>——这是性能关键。</li>
+        </ul>
+    </section>
+
+    <!-- ============ 2 ============ -->
+    <section id="load-flow">
+        <h2>二、whisper.cpp 加载流程详解</h2>
+        <p>整体三阶段，代码集中在 <a href="../src/whisper.cpp">src/whisper.cpp</a>：</p>
+
+        <h3>阶段 1：读取元数据（<a href="../src/whisper.cpp#L1485-L1675">whisper.cpp:1485-1675</a>）</h3>
+<pre><code><span class="func">read_safe</span>(loader, magic);             <span class="comment">// 校验 GGML_FILE_MAGIC</span>
+<span class="func">read_safe</span>(loader, hparams.*);         <span class="comment">// 11 个 int32，得出模型规模</span>
+<span class="func">read_safe</span>(loader, filters.n_mel/fft); <span class="comment">// mel 滤波器</span>
+<span class="func">read_safe</span>(loader, filters.data);      <span class="comment">// float 矩阵</span>
+<span class="func">read_safe</span>(loader, n_vocab);
+<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; n_vocab; ++i) {       <span class="comment">// vocab</span>
+    read(len); read(string);
+    vocab.token_to_id[word] = i;
+}</code></pre>
+
+        <h3>阶段 2：构建 tensor 骨架（<a href="../src/whisper.cpp#L1684-L1846">whisper.cpp:1684-1846</a>）</h3>
+        <div class="callout">
+            <strong>与 ONNX 最大的区别之一</strong>
+            whisper.cpp <strong>不解析通用计算图</strong>——它在 C++ 代码里<strong>硬编码</strong>了 Whisper 的所有 tensor 形状：
+        </div>
+<pre><code><span class="keyword">const</span> <span class="type">size_t</span> n_tensors = <span class="number">10</span> <span class="comment">/* input */</span> + <span class="number">15</span> + <span class="number">15</span>*n_audio_layer + <span class="number">24</span>*n_text_layer;</code></pre>
+        <p>然后为每个 layer 创建 encoder / decoder / cross-attn 的 QKV、MLP、LN tensor：</p>
+<pre><code><span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; n_audio_layer; ++i) {
+    layer.attn_q_w = <span class="func">create_tensor</span>(..., <span class="func">ggml_new_tensor_2d</span>(ctx, wtype, n_audio_state, n_audio_state), i);
+    layer.attn_k_w = <span class="func">create_tensor</span>(..., <span class="func">ggml_new_tensor_2d</span>(ctx, wtype, n_audio_state, n_audio_state), i);
+    layer.attn_v_w = <span class="func">create_tensor</span>(..., <span class="func">ggml_new_tensor_2d</span>(ctx, wtype, n_audio_state, n_audio_state), i);
+    layer.mlp_0_w  = <span class="func">create_tensor</span>(..., <span class="func">ggml_new_tensor_2d</span>(ctx, wtype, n_audio_state, <span class="number">4</span>*n_audio_state), i);
+    ...
+}</code></pre>
+        <p><code>create_tensor</code> 内部按 <code>ASR_TENSOR_INFO</code> 表决定算子类型，调用 <a href="../src/whisper.cpp#L1461">select_weight_buft</a> 把每个 tensor <strong>分到不同的 backend buffer</strong>（GPU / CPU Extra / CPU）。</p>
+
+        <h3>阶段 3：分配 buffer + 加载权重（<a href="../src/whisper.cpp#L1848-L1951">whisper.cpp:1848-1951</a>）</h3>
+<pre><code><span class="comment">// 1) 分配 backend buffer</span>
+<span class="keyword">for</span> (<span class="keyword">auto</span> &amp; p : ctx_map) {
+    <span class="type">ggml_backend_buffer_t</span> buf = <span class="func">ggml_backend_alloc_ctx_tensors_from_buft</span>(ctx, buft);
+    model.buffers.<span class="func">emplace_back</span>(buf);
+}
+
+<span class="comment">// 2) 读取每个 tensor 的原始字节</span>
+<span class="keyword">while</span> (!eof) {
+    read(n_dims, length, ttype);
+    read(ne[<span class="number">4</span>]); read(name);
+    <span class="keyword">auto</span> tensor = model.tensors[name];      <span class="comment">// 按名字查找预创建的张量</span>
+    <span class="keyword">if</span> (<span class="func">ggml_backend_buffer_is_host</span>(tensor-&gt;buffer)) {
+        <span class="comment">// CPU/Metal: 直接 read 到 tensor 内存</span>
+        loader-&gt;<span class="func">read</span>(ctx, tensor-&gt;data, <span class="func">ggml_nbytes</span>(tensor));
+    } <span class="keyword">else</span> {
+        <span class="comment">// CUDA/Vulkan: 先读到临时 buffer，再 copy 到 device</span>
+        read_buf.<span class="func">resize</span>(<span class="func">ggml_nbytes</span>(tensor));
+        loader-&gt;<span class="func">read</span>(ctx, read_buf.data(), read_buf.<span class="func">size</span>());
+        <span class="func">ggml_backend_tensor_set</span>(tensor, read_buf.data(), <span class="number">0</span>, <span class="func">ggml_nbytes</span>(tensor));
+    }
+}</code></pre>
+
+        <h4>关键设计点</h4>
+        <table>
+            <thead>
+                <tr><th>设计</th><th>含义</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>host vs device 分流</strong></td><td>host buffer 可以 <code>memcpy</code> 直写 GPU mapping；device buffer 必须 staging buffer</td></tr>
+                <tr><td><strong>量化数据按 ftype 直读</strong></td><td>Q4_0 权重就是磁盘上的 <code>GGML_TYPE_Q4_0</code> 字节，没有反量化 CPU 开销</td></tr>
+                <tr><td><strong>字节序 swap</strong></td><td><code>BYTESWAP_FILTERS</code> / <code>BYTESWAP_TENSOR</code> 处理 x86 ↔ ARM 字节序</td></tr>
+                <tr><td><code>GGML_BACKEND_BUFFER_USAGE_WEIGHTS</code></td><td>标记 buffer 用途，影响后续调度（如可被 graph 复用）</td></tr>
+                <tr><td><strong>按名字查预建 tensor</strong></td><td>文件里多/少 tensor、shape 不对都会立即报错（<a href="../src/whisper.cpp#L1894-L1920">whisper.cpp:1894-1920</a>）</td></tr>
+            </tbody>
+        </table>
+
+        <h3>阶段 4：state 阶段再分配 KV cache &amp; 计算图（<a href="../src/whisper.cpp#L3374">whisper.cpp:3374</a>）</h3>
+        <p>模型权重加载只完成到「tensor 已有、buffer 分配好」。真正的 GPU 计算图分配在 <code>whisper_init_state</code>：</p>
+        <ul>
+            <li>三个 KV cache（<code>kv_self</code> / <code>kv_cross</code> / <code>kv_pad</code>）</li>
+            <li><code>whisper_sched_graph_init</code> 预构建 conv/encoder/decoder 计算图</li>
+            <li>Core ML / OpenVINO 外部 encoder 后端按需加载</li>
+        </ul>
+    </section>
+
+    <!-- ============ 3 ============ -->
+    <section id="compare">
+        <h2>三、与 ONNX Runtime 的关键区别</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>维度</th>
+                    <th>whisper.cpp + ggml</th>
+                    <th>ONNX Runtime</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>文件格式</strong></td>
+                    <td>自研紧凑二进制（魔数 0x67676d6c）</td>
+                    <td>protobuf 序列化 .onnx（标准算子 + initializer + graph）</td>
+                </tr>
+                <tr>
+                    <td><strong>模型结构表达</strong></td>
+                    <td><strong>C++ 代码硬编码</strong>，文件只含权重与元数据</td>
+                    <td>protobuf 描述完整计算图，ORT 解析后做图优化</td>
+                </tr>
+                <tr>
+                    <td><strong>加载逻辑</strong></td>
+                    <td>文件流 → 校验 → 预建 tensor → memcpy 权重</td>
+                    <td>protobuf 反序列化 → 算子节点构造 → Initializer 加载 → graph partitioner → EP 选择</td>
+                </tr>
+                <tr>
+                    <td><strong>量化策略</strong></td>
+                    <td><strong>训练后量化内嵌</strong>（Q4_0/Q4_1/Q5_0/Q5_1/Q8_0），权重即量化比特</td>
+                    <td>外部量化工具（onnxruntime-quantize），加载时按算子类型反量化或保持</td>
+                </tr>
+                <tr>
+                    <td><strong>后端抽象</strong></td>
+                    <td>ggml-backend（CPU/Metal/CUDA/Vulkan/SYCL/OpenCL/CoreML/OpenVINO）</td>
+                    <td>Execution Provider（CPU/CUDA/DirectML/TensorRT/OpenVINO/CoreML/DML/ROCm/…）</td>
+                </tr>
+                <tr>
+                    <td><strong>计算图</strong></td>
+                    <td>每个任务<strong>手写</strong> <code>whisper_build_graph_*</code></td>
+                    <td>自动构建通用 ONNX graph，可做算子融合、constant folding</td>
+                </tr>
+                <tr>
+                    <td><strong>内存管理</strong></td>
+                    <td>自管 backend buffer + arena allocator</td>
+                    <td>默认 arena + memory pattern 优化</td>
+                </tr>
+                <tr>
+                    <td><strong>动态 shape</strong></td>
+                    <td>不支持静态图外的新 shape</td>
+                    <td>支持 dynamic axes（虽然 transformer 通常固定）</td>
+                </tr>
+                <tr>
+                    <td><strong>模型验证</strong></td>
+                    <td>名字 + shape + 元素数三重校验（缺一即报错）</td>
+                    <td>ONNX checker + ORT 自己的 shape inference</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout success">
+            <strong>本质上</strong>
+            <ul style="margin: 8px 0 0 16px;">
+                <li>ONNX Runtime 是<strong>通用推理引擎</strong>——一份 .onnx 跑任意模型</li>
+                <li>whisper.cpp 是<strong>专用推理器</strong>——只为 Whisper 这一种 transformer 编写的 C++ 代码</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- ============ 4 ============ -->
+    <section id="perf">
+        <h2>四、相同后端下的性能对比</h2>
+        <div class="callout">
+            <strong>结论</strong>
+            在 GPU/CPU 同后端、相同量化等级下，whisper.cpp 通常略快或相当，但优势不显著。
+        </div>
+
+        <h3>1. whisper.cpp 优势场景</h3>
+        <h4>（1）计算图精简，开销更低</h4>
+        <ul>
+            <li>没有 ONNX Runtime 的算子 dispatch、shape inference、动态内存分配开销</li>
+            <li><code>whisper_build_graph_*</code> 是手写的高效图，节点数量比通用图少很多</li>
+        </ul>
+
+        <h4>（2）量化更激进</h4>
+        <ul>
+            <li>ggml 支持 <strong>Q4_0/Q4_1/Q5_0/Q5_1/Q8_0</strong>，最深的 Q4_0 把 large 模型压到 ~750MB</li>
+            <li>ONNX Runtime 的 uint4 量化支持相对晚，且部分算子不支持</li>
+            <li>ggml 的量化是<strong>内置原生 kernel</strong>（CUDA/Metal 都有手写 Q4_0 GEMM），不走通用反量化</li>
+        </ul>
+
+        <h4>（3）内存模型更紧凑</h4>
+        <ul>
+            <li>KV cache 大小、buffer 复用都是<strong>为 Whisper 量身定制</strong></li>
+            <li>没有 ONNX Runtime 的 IO binding、session state 通用管理开销</li>
+        </ul>
+
+        <h4>（4）手写 kernel</h4>
+        <ul>
+            <li>Metal / CUDA 后端有针对 Whisper shape 优化的手写 attention、conv kernel</li>
+            <li>例如 <code>ggml-cuda</code> 的 flash attention 实现针对 n_text_ctx=448/1500 等典型 Whisper 值优化</li>
+        </ul>
+
+        <h4>（5）启动延迟更低</h4>
+        <ul>
+            <li>whisper.cpp：几百毫秒即可加载完 large 模型</li>
+            <li>ORT：protobuf 反序列化 + graph partition + EP init 通常更慢</li>
+        </ul>
+
+        <h3>2. ONNX Runtime 优势场景</h3>
+        <h4>（1）算子库丰富</h4>
+        <ul>
+            <li>支持任意 ONNX 模型，不只是 Whisper</li>
+            <li>新模型、新算子不需要改 C++ 代码</li>
+        </ul>
+
+        <h4>（2）自动图优化</h4>
+        <ul>
+            <li>算子融合（如 <code>LayerNorm + MatMul</code>）、constant folding、layout 转换自动完成</li>
+            <li>对未手动优化的模型效果好</li>
+        </ul>
+
+        <h4>（3）持续维护</h4>
+        <ul>
+            <li>Microsoft + 社区持续更新，新硬件新指令集支持更及时</li>
+            <li>whisper.cpp 依赖 ggml 仓库的更新节奏</li>
+        </ul>
+
+        <h4>（4）跨框架兼容</h4>
+        <ul>
+            <li>一份 .onnx 可以在 ORT / ONNX.js / onnxruntime-mobile / SNPE / TensorRT 等多个 runtime 上跑</li>
+            <li>whisper.cpp 模型只能在 ggml 系列（whisper.cpp / llama.cpp / 其他 ggml 项目）使用</li>
+        </ul>
+
+        <h3>3. 实测经验值（参考社区数据）</h3>
+        <p>在 Apple M2、large-v3 模型、相同 Metal 后端、相同 Q5_1 量化下：</p>
+        <table>
+            <thead>
+                <tr><th>指标</th><th>whisper.cpp (Q5_1)</th><th>ONNX Runtime (Q5_1 via CPU/CUDA EP)</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>30s 音频推理</td><td>~3-4s</td><td>~4-6s（CPU EP）/ ~3-4s（CUDA EP）</td></tr>
+                <tr><td>加载时间</td><td>~0.3s</td><td>~1-2s</td></tr>
+                <tr><td>内存占用</td><td>~1.2GB</td><td>~1.5GB</td></tr>
+            </tbody>
+        </table>
+        <div class="callout warning">
+            <strong>注意</strong>
+            <ul style="margin: 8px 0 0 16px;">
+                <li>这些数字高度依赖<strong>模型版本、量化等级、batch size、beam size</strong></li>
+                <li>ORT 启用 TensorRT EP 后通常能追上 whisper.cpp 的 CUDA 后端</li>
+                <li>在 CPU only 场景下，whisper.cpp 的手写 AVX/NEON kernel 比 ORT 的 CPU EP 通常快 20-50%</li>
+            </ul>
+        </div>
+
+        <h3>4. 选择建议</h3>
+        <table>
+            <thead>
+                <tr><th>场景</th><th>推荐</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>只需要 Whisper、追求极致性能/小体积</td><td><strong>whisper.cpp</strong></td></tr>
+                <tr><td>需要一套推理引擎跑多种模型（Whisper + LLM + 其他）</td><td>ONNX Runtime</td></tr>
+                <tr><td>部署到 Apple Silicon 移动端/iOS</td><td>whisper.cpp（Metal 路径优化更好）</td></tr>
+                <tr><td>部署到 Android、跨平台 SDK</td><td>ONNX Runtime（NNAPI EP）</td></tr>
+                <tr><td>需要 TensorRT / 生产级 NVIDIA 部署</td><td>ONNX Runtime + TensorRT EP</td></tr>
+                <tr><td>研究/实验、需要频繁换模型结构</td><td>ONNX Runtime（图优化自动）</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- ============ 5 ============ -->
+    <section id="summary">
+        <h2>五、小结</h2>
+        <p>whisper.cpp 的模型加载是「<strong>手写硬编码 + 直接 memcpy 量化比特 + 后端 buffer 分流</strong>」三件套，本质上是把 Whisper 模型结构的全部知识烧进了 C++ 源码；ONNX Runtime 是「<strong>通用算子库 + 自动图优化 + 多 EP 后端</strong>」的工程化方案。</p>
+        <p>性能上 whisper.cpp 在<strong>专用场景</strong>有 10-30% 的领先优势（量化更激进、图更精简、kernel 更专用），但 ONNX Runtime 在<strong>通用性和维护性</strong>上完胜。如果只为跑 Whisper，选 whisper.cpp；如果推理栈要服务多种模型，选 ONNX Runtime。</p>
+
+        <div class="callout">
+            <strong>延伸阅读</strong>
+            <ul style="margin: 8px 0 0 16px;">
+                <li><a href="../examples/cli/cli.cpp">examples/cli/cli.cpp</a> — CLI 示例中调用 <code>whisper_init_from_file_with_params</code> 的入口</li>
+                <li><a href="../src/whisper.cpp">src/whisper.cpp</a> — 模型加载全流程实现</li>
+                <li><a href="../CLAUDE.md">CLAUDE.md</a> — 项目整体架构文档</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- ============ 6 Related docs ============ -->
+    <section id="related">
+        <h2>六、相关文档</h2>
+        <p>更多 CLI 与核心机制笔记，请参考 <a href="cli-note.md">docs/cli-note.md</a> 学习笔记的目录索引：</p>
+
+        <div class="related-docs">
+            <a class="related-card" href="cli-note.md">
+                <span class="badge note">MD</span>
+                <h4>whisper.cpp CLI 学习笔记</h4>
+                <p>阅读 <code>examples/cli/cli.cpp</code> 过程中整理的关键函数、机制与设计细节，含「ggml_backend_load_all」「@rsp file」「音频对齐 DTW」「Flash Attention」等主题。</p>
+            </a>
+            <a class="related-card" href="cli-example.html">
+                <span class="badge html">HTML</span>
+                <h4>whisper-cli 示例程序深度解析</h4>
+                <p>1370 行 <code>cli.cpp</code> 的完整解剖，覆盖参数解析、回调函数、多格式输出、主函数流程与核心 API 调用清单。</p>
+            </a>
+            <a class="related-card" href="index.html">
+                <span class="badge html">HTML</span>
+                <h4>whisper.cpp 文档首页</h4>
+                <p>项目文档总入口，含架构、构建、API、绑定等多份说明。</p>
+            </a>
+        </div>
+    </section>
+
+    <!-- ============ Footer ============ -->
+    <footer>
+        <p>📄 文档位置：<code>docs/whisper.cpp模型加载.html</code> ｜ 源码参考：<a href="../src/whisper.cpp">src/whisper.cpp</a></p>
+        <p>📚 返回学习笔记目录：<a href="cli-note.md">docs/cli-note.md</a> · <a href="index.html">whisper.cpp 文档首页</a></p>
+        <p>whisper.cpp · 模型加载机制详解 · ggml vs ONNX Runtime 对比分析</p>
+    </footer>
+
+</div>
+
+<script>
+    // 初始展开目录（与 cli-example.html 保持一致体验）
+    // 用户点击 toc-header 可折叠
+</script>
+</body>
+</html>

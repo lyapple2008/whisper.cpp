@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>whisper.cpp Log Mel Spectrogram 计算详解</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --code-bg: #1e293b;
+            --code-text: #e2e8f0;
+            --accent: #0ea5e9;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --purple: #8b5cf6;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            line-height: 1.7;
+            color: var(--text);
+            background: var(--bg);
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+        .hero {
+            background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 50%, #7c3aed 100%);
+            color: white;
+            padding: 56px 24px;
+            border-radius: 16px;
+            margin-bottom: 32px;
+            box-shadow: 0 10px 30px rgba(37, 99, 235, 0.25);
+        }
+
+        .hero h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 12px; }
+        .hero p { font-size: 1.05rem; opacity: 0.95; max-width: 820px; }
+        .hero .meta { font-size: 0.88rem; opacity: 0.8; margin-top: 16px; }
+
+        .toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 32px;
+            padding: 20px 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+
+        .toc h3 { color: var(--primary); font-size: 0.95rem; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .toc ol { margin-left: 20px; }
+        .toc li { margin: 4px 0; }
+        .toc a { color: var(--text); text-decoration: none; }
+        .toc a:hover { color: var(--primary); }
+
+        section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            scroll-margin-top: 80px;
+        }
+
+        section h2 {
+            color: var(--primary);
+            font-size: 1.55rem;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        section h3 { color: var(--primary-dark); font-size: 1.2rem; margin: 20px 0 12px; }
+        section h4 { font-size: 1.05rem; margin: 16px 0 10px; font-weight: 600; }
+        section p { margin-bottom: 12px; }
+        section ul, section ol { margin: 12px 0 12px 24px; }
+        section li { margin-bottom: 6px; }
+
+        code {
+            background: var(--bg);
+            color: var(--danger);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: "SF Mono", Monaco, Consolas, monospace;
+            font-size: 0.88em;
+            border: 1px solid var(--border);
+        }
+
+        pre {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 18px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 14px 0;
+            font-family: "SF Mono", Monaco, Consolas, monospace;
+            font-size: 0.82rem;
+            line-height: 1.55;
+            border: 1px solid #334155;
+        }
+
+        pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 0.92rem;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        thead { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white; }
+        th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+        tbody tr:hover { background: var(--bg); }
+
+        .formula {
+            background: #f0f9ff;
+            border-left: 4px solid var(--accent);
+            padding: 14px 18px;
+            margin: 14px 0;
+            border-radius: 0 8px 8px 0;
+            font-family: "Times New Roman", serif;
+            font-size: 1.05rem;
+            overflow-x: auto;
+        }
+
+        .note {
+            background: #fffbeb;
+            border-left: 4px solid var(--warning);
+            padding: 14px 18px;
+            margin: 14px 0;
+            border-radius: 0 8px 8px 0;
+            font-size: 0.95rem;
+        }
+
+        .note.info { background: #eff6ff; border-color: var(--primary); }
+        .note.success { background: #ecfdf5; border-color: var(--success); }
+
+        /* Pipeline */
+        .pipeline {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin: 20px 0;
+            padding: 20px;
+            background: var(--bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .pipe-step {
+            background: white;
+            border: 2px solid var(--primary);
+            border-radius: 10px;
+            padding: 12px 16px;
+            text-align: center;
+            min-width: 110px;
+            flex: 1;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--primary-dark);
+            box-shadow: 0 2px 6px rgba(37,99,235,0.12);
+        }
+
+        .pipe-arrow {
+            color: var(--accent);
+            font-size: 1.4rem;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        /* Canvas panels */
+        .viz-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .viz-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            overflow: hidden;
+        }
+
+        .viz-card h4 {
+            margin: 0 0 4px;
+            font-size: 0.95rem;
+            color: var(--primary-dark);
+        }
+
+        .viz-card .desc {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            background: #0f172a;
+            cursor: crosshair;
+        }
+
+        .viz-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin-top: 10px;
+            font-size: 0.85rem;
+        }
+
+        .viz-controls label { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+        .viz-controls input[type="range"] { width: 120px; }
+
+        /* Padding diagram */
+        .pad-diagram {
+            display: flex;
+            height: 64px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 16px 0;
+            border: 1px solid var(--border);
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        .pad-seg {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 4px;
+            line-height: 1.3;
+        }
+
+        .pad-reflect { background: #8b5cf6; flex: 0 0 8%; }
+        .pad-audio   { background: #2563eb; flex: 1; }
+        .pad-zero    { background: #64748b; flex: 0 0 35%; }
+        .pad-reflect-end { background: #a78bfa; flex: 0 0 8%; }
+
+        /* STFT frame slider */
+        .frame-viz {
+            position: relative;
+            height: 80px;
+            background: #1e293b;
+            border-radius: 8px;
+            margin: 12px 0;
+            overflow: hidden;
+        }
+
+        .frame-wave {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .frame-window {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            background: rgba(14, 165, 233, 0.35);
+            border: 2px solid #0ea5e9;
+            border-radius: 4px;
+            transition: left 0.05s linear;
+        }
+
+        .frame-hop-marker {
+            position: absolute;
+            bottom: 4px;
+            font-size: 0.72rem;
+            color: #94a3b8;
+            transform: translateX(-50%);
+        }
+
+        /* Memory layout */
+        .matrix-viz {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 12px;
+            align-items: center;
+            margin: 16px 0;
+        }
+
+        .matrix-box {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 2px;
+            max-width: 280px;
+        }
+
+        .matrix-cell {
+            aspect-ratio: 1;
+            border-radius: 2px;
+            background: #cbd5e1;
+        }
+
+        .axis-label {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+        }
+
+        /* Model comparison */
+        .param-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        .badge-fixed { background: #dcfce7; color: #166534; }
+        .badge-model { background: #ffedd5; color: #9a3412; }
+        .badge-same  { background: #e0e7ff; color: #3730a3; }
+
+        .compare-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 16px 0;
+        }
+
+        @media (max-width: 720px) {
+            .compare-grid { grid-template-columns: 1fr; }
+        }
+
+        .model-card {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            background: var(--bg);
+        }
+
+        .model-card h4 { margin: 0 0 8px; font-size: 0.95rem; }
+        .model-card ul { margin: 0; padding-left: 18px; font-size: 0.88rem; }
+
+        .highlight-row { background: #fff7ed !important; }
+        .highlight-row td:first-child { font-weight: 600; }
+
+        footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 0.88rem;
+        }
+
+        @media (max-width: 640px) {
+            .hero h1 { font-size: 1.6rem; }
+            section { padding: 20px; }
+            .pipe-arrow { display: none; }
+            .pipeline { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <header class="hero">
+        <h1>whisper.cpp Log Mel Spectrogram 计算详解</h1>
+        <p>
+            本文档解析 <code>src/whisper.cpp</code> 中从 16 kHz PCM 浮点音频到 Encoder 输入的完整 Mel 频谱计算流程，
+            涵盖填充策略、STFT、Mel 滤波、对数压缩与动态范围归一化，并对比不同模型（80 vs 128 Mel）的参数差异。
+        </p>
+        <div class="meta">
+            源码入口：<code>whisper_pcm_to_mel()</code> → <code>log_mel_spectrogram()</code> &nbsp;|&nbsp;
+            参考：<a href="https://github.com/openai/whisper/blob/main/whisper/audio.py" style="color:#bfdbfe">openai/whisper audio.py</a>
+        </div>
+    </header>
+
+    <nav class="toc">
+        <h3>目录</h3>
+        <ol>
+            <li><a href="#overview">总览与数据流</a></li>
+            <li><a href="#constants">关键常量与数据结构</a></li>
+            <li><a href="#models">不同模型下的参数差异</a></li>
+            <li><a href="#padding">音频填充（Reflect + Zero）</a></li>
+            <li><a href="#stft">STFT：Hann 窗 + FFT + 功率谱</a></li>
+            <li><a href="#mel">Mel 滤波器组 + log10</a></li>
+            <li><a href="#normalize">动态范围截断与归一化</a></li>
+            <li><a href="#visual">交互式可视化</a></li>
+            <li><a href="#encoder">送入 Encoder 的张量布局</a></li>
+            <li><a href="#api">公共 API 与调用链</a></li>
+        </ol>
+    </nav>
+
+    <!-- ===== 1. Overview ===== -->
+    <section id="overview">
+        <h2>1. 总览与数据流</h2>
+        <p>
+            Whisper 不直接把原始波形送入 Transformer，而是先计算 <strong>Log Mel Spectrogram</strong>（对数 Mel 频谱图）。
+            这是语音识别的标准前端：将时域信号转为时频表示，使模型能感知音高、能量随时间的变化。
+        </p>
+
+        <div class="pipeline">
+            <div class="pipe-step">PCM float32<br><small>16 kHz 单声道</small></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">Reflect + Zero<br><small>填充</small></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">STFT<br><small>400 点 / 160 步进</small></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">|X|²<br><small>功率谱</small></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">Mel 滤波<br><small>80 频带</small></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">log₁₀<br><small>对数压缩</small></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">Clamp + Norm<br><small>动态范围</small></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">Encoder<br><small>Conv1d ×2</small></div>
+        </div>
+
+        <pre><code><span class="comment">// include/whisper.h — 公共 API 入口</span>
+<span class="keyword">int</span> <span class="func">whisper_pcm_to_mel_with_state</span>(..., <span class="keyword">const float</span> * samples, <span class="keyword">int</span> n_samples, <span class="keyword">int</span> n_threads) {
+    <span class="func">log_mel_spectrogram</span>(*state, samples, n_samples,
+        WHISPER_SAMPLE_RATE,   <span class="comment">// 16000</span>
+        WHISPER_N_FFT,         <span class="comment">// 400</span>
+        WHISPER_HOP_LENGTH,    <span class="comment">// 160</span>
+        ctx->model.filters.n_mel, n_threads,
+        ctx->model.filters, <span class="keyword">false</span>, state->mel);
+}</code></pre>
+    </section>
+
+    <!-- ===== 2. Constants ===== -->
+    <section id="constants">
+        <h2>2. 关键常量与数据结构</h2>
+
+        <table>
+            <thead>
+                <tr><th>符号 / 宏</th><th>值</th><th>物理含义</th><th>定义位置</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>WHISPER_SAMPLE_RATE</code></td><td>16000 Hz</td><td>采样率，与 OpenAI Whisper 一致</td><td><code>include/whisper.h</code></td></tr>
+                <tr><td><code>WHISPER_N_FFT</code></td><td>400</td><td>FFT 窗长 = 25 ms（400/16000）</td><td><code>include/whisper.h</code></td></tr>
+                <tr><td><code>WHISPER_HOP_LENGTH</code></td><td>160</td><td>帧移 = 10 ms（160/16000）</td><td><code>include/whisper.h</code></td></tr>
+                <tr><td><code>n_mel</code></td><td>80</td><td>Mel 频带数（模型超参数）</td><td>模型文件 / <code>hparams.n_mels</code></td></tr>
+                <tr><td><code>filters.n_fft</code></td><td>201</td><td>功率谱 bin 数 = 1 + N_FFT/2</td><td>模型文件预存</td></tr>
+                <tr><td><code>stage_2_pad</code></td><td>200</td><td>首尾反射填充 = N_FFT/2</td><td><code>log_mel_spectrogram()</code></td></tr>
+                <tr><td><code>stage_1_pad</code></td><td>480000</td><td>尾部零填充 = 30 秒</td><td><code>log_mel_spectrogram()</code></td></tr>
+            </tbody>
+        </table>
+
+        <h3>核心数据结构</h3>
+        <pre><code><span class="keyword">struct</span> <span class="type">whisper_mel</span> {
+    <span class="keyword">int</span> n_len;      <span class="comment">// 时间帧数（含 30s 零填充后的帧）</span>
+    <span class="keyword">int</span> n_len_org;  <span class="comment">// 原始音频对应的帧数（用于时间戳对齐）</span>
+    <span class="keyword">int</span> n_mel;      <span class="comment">// Mel 频带数，通常 80</span>
+    std::vector&lt;<span class="keyword">float</span>&gt; data;  <span class="comment">// 行主序: data[j * n_len + i]</span>
+};
+
+<span class="keyword">struct</span> <span class="type">whisper_filters</span> {
+    <span class="keyword">int32_t</span> n_mel;   <span class="comment">// 80</span>
+    <span class="keyword">int32_t</span> n_fft;   <span class="comment">// 201</span>
+    std::vector&lt;<span class="keyword">float</span>&gt; data;  <span class="comment">// [n_mel × n_fft] Mel 滤波器矩阵，从模型文件加载</span>
+};</code></pre>
+
+        <div class="note info">
+            <strong>Mel 滤波器不在运行时计算。</strong>
+            模型加载时从 <code>.bin</code> 文件读取预计算的滤波器矩阵（<code>whisper_model_load()</code>），
+            保证与 PyTorch 原版 Whisper 数值一致。
+        </div>
+    </section>
+
+    <!-- ===== 3. Models ===== -->
+    <section id="models">
+        <h2>3. 不同 Whisper 模型下的参数差异</h2>
+        <p>
+            Log Mel Spectrogram 的<strong>信号处理流水线</strong>（采样率、窗长、帧移、填充、FFT、对数与归一化公式）
+            在所有标准 Whisper 模型中<strong>完全一致</strong>，由 <code>include/whisper.h</code> 中的编译期宏和
+            <code>log_mel_spectrogram()</code> 硬编码决定，<strong>不随模型体量变化</strong>。
+        </p>
+        <p>
+            真正随模型变化、且直接影响 Mel 计算的只有<strong>模型文件内嵌的超参数</strong>，核心是
+            <code>n_mels</code> 及其对应的 Mel 滤波器矩阵。
+        </p>
+
+        <h3>3.1 固定 vs 可变参数一览</h3>
+        <table>
+            <thead>
+                <tr><th>参数</th><th>来源</th><th>典型值</th><th>是否随模型变化</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>WHISPER_SAMPLE_RATE</code></td><td>编译期宏</td><td>16000 Hz</td>
+                    <td><span class="param-badge badge-fixed">全部相同</span></td>
+                </tr>
+                <tr>
+                    <td><code>WHISPER_N_FFT</code> / <code>frame_size</code></td><td>编译期宏</td><td>400（25 ms）</td>
+                    <td><span class="param-badge badge-fixed">全部相同</span></td>
+                </tr>
+                <tr>
+                    <td><code>WHISPER_HOP_LENGTH</code> / <code>frame_step</code></td><td>编译期宏</td><td>160（10 ms）</td>
+                    <td><span class="param-badge badge-fixed">全部相同</span></td>
+                </tr>
+                <tr>
+                    <td><code>filters.n_fft</code></td><td>模型文件</td><td>201（= 1 + N_FFT/2）</td>
+                    <td><span class="param-badge badge-fixed">全部相同</span></td>
+                </tr>
+                <tr>
+                    <td>Reflect / Zero 填充策略</td><td>源码硬编码</td><td>200 + 30s + 200</td>
+                    <td><span class="param-badge badge-fixed">全部相同</span></td>
+                </tr>
+                <tr>
+                    <td>Hann 窗 / FFT / log₁₀ / 归一化</td><td>源码硬编码</td><td>见前文各节</td>
+                    <td><span class="param-badge badge-fixed">全部相同</span></td>
+                </tr>
+                <tr>
+                    <td><code>n_audio_ctx</code></td><td>模型 hparams</td><td>1500</td>
+                    <td><span class="param-badge badge-same">标准模型均 1500</span></td>
+                </tr>
+                <tr class="highlight-row">
+                    <td><code>n_mels</code> / <code>filters.n_mel</code></td><td>模型 hparams + filters</td><td>80 或 128</td>
+                    <td><span class="param-badge badge-model">large-v3 系为 128</span></td>
+                </tr>
+                <tr class="highlight-row">
+                    <td>Mel 滤波器矩阵 <code>filters.data</code></td><td>模型文件</td><td>n_mel × 201 floats</td>
+                    <td><span class="param-badge badge-model">随 n_mels 变化</span></td>
+                </tr>
+                <tr class="highlight-row">
+                    <td>输出 <code>mel.data</code> 大小</td><td>运行时计算</td><td>n_mel × n_len</td>
+                    <td><span class="param-badge badge-model">随 n_mels 线性增长</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="note info">
+            <strong>量化版本（Q5_0、Q8_0 等）不影响 Mel 计算。</strong>
+            量化只改变 Encoder/Decoder 权重精度；Mel 前端始终用 float32 运算，滤波器矩阵仍以 float 存储于模型文件。
+        </div>
+
+        <h3>3.2 各模型 hparams 对照表</h3>
+        <p>以下数据来自 OpenAI Whisper 官方 <code>ModelDimensions</code>，whisper.cpp 加载模型时从 <code>.bin</code> 文件读入 <code>whisper_hparams</code>。与 Mel 计算直接相关的列已高亮。</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>模型</th><th>参数量</th>
+                    <th>n_mels</th><th>n_fft bins</th><th>Mel 矩阵</th><th>n_audio_ctx</th>
+                    <th>Encoder 层数</th><th>n_vocab</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>tiny / tiny.en</td><td>39 M</td><td>80</td><td>201</td><td>80×201</td><td>1500</td><td>4</td><td>51864 / 51865</td></tr>
+                <tr><td>base / base.en</td><td>74 M</td><td>80</td><td>201</td><td>80×201</td><td>1500</td><td>6</td><td>51864 / 51865</td></tr>
+                <tr><td>small / small.en</td><td>244 M</td><td>80</td><td>201</td><td>80×201</td><td>1500</td><td>12</td><td>51864 / 51865</td></tr>
+                <tr><td>small.en-tdrz</td><td>244 M</td><td>80</td><td>201</td><td>80×201</td><td>1500</td><td>12</td><td>51865</td></tr>
+                <tr><td>medium / medium.en</td><td>769 M</td><td>80</td><td>201</td><td>80×201</td><td>1500</td><td>24</td><td>51864 / 51865</td></tr>
+                <tr><td>large-v1 / large-v2</td><td>1550 M</td><td>80</td><td>201</td><td>80×201</td><td>1500</td><td>32</td><td>51865</td></tr>
+                <tr class="highlight-row"><td>large-v3</td><td>1550 M</td><td><strong>128</strong></td><td>201</td><td><strong>128×201</strong></td><td>1500</td><td>32</td><td>51866</td></tr>
+                <tr class="highlight-row"><td>large-v3-turbo</td><td>809 M</td><td><strong>128</strong></td><td>201</td><td><strong>128×201</strong></td><td>1500</td><td>32</td><td>51866</td></tr>
+            </tbody>
+        </table>
+
+        <div class="note">
+            <strong>large-v3 是唯一改变 Mel 频带数的版本。</strong>
+            OpenAI 在 v3 训练时将 <code>n_mels</code> 从 80 增至 128，提供更细的频率分辨率；
+            对应滤波器来自 <code>mel_filters.npz</code> 中的 <code>mel_128</code>（转换脚本
+            <code>models/convert-pt-to-ggml.py</code> 按 <code>hparams["n_mels"]</code> 选取）。
+            tiny → large-v2 均使用 <code>mel_80</code>。
+        </div>
+
+        <h3>3.3 运行时如何传入 n_mels</h3>
+        <pre><code><span class="comment">// whisper_pcm_to_mel_with_state — n_mel 来自已加载模型的 filters，非调用方指定</span>
+<span class="func">log_mel_spectrogram</span>(..., ctx->model.filters.n_mel, ..., ctx->model.filters, ..., state->mel);
+
+<span class="comment">// whisper_model_load — 从 .bin 读取</span>
+read_safe(loader, filters.n_mel);   <span class="comment">// 80 或 128</span>
+read_safe(loader, filters.n_fft);   <span class="comment">// 恒为 201</span>
+filters.data.resize(filters.n_mel * filters.n_fft);</code></pre>
+
+        <h3>3.4 对计算量与内存的影响</h3>
+        <p>STFT（FFT）阶段与模型无关；Mel 滤波阶段每帧多做 <code>n_mels</code> 次长度为 201 的点积。</p>
+
+        <div class="compare-grid">
+            <div class="model-card">
+                <h4>80 Mel（tiny → large-v2）</h4>
+                <ul>
+                    <li>每帧 Mel 点积：80 × 201 ≈ <strong>16 K MACs</strong></li>
+                    <li>30s 音频帧数 n_len_org ≈ <strong>3000</strong></li>
+                    <li>mel.data 约 80 × 3000 = <strong>240 K floats ≈ 960 KB</strong></li>
+                    <li>滤波器矩阵 80×201 ≈ <strong>64 KB</strong></li>
+                </ul>
+            </div>
+            <div class="model-card">
+                <h4>128 Mel（large-v3 / turbo）</h4>
+                <ul>
+                    <li>每帧 Mel 点积：128 × 201 ≈ <strong>26 K MACs</strong>（+60%）</li>
+                    <li>30s 音频帧数 n_len_org ≈ <strong>3000</strong>（相同）</li>
+                    <li>mel.data 约 128 × 3000 = <strong>384 K floats ≈ 1.5 MB</strong>（+60%）</li>
+                    <li>滤波器矩阵 128×201 ≈ <strong>103 KB</strong></li>
+                </ul>
+            </div>
+        </div>
+
+        <p>
+            Encoder 输入张量形状为 <code>[2 × n_audio_ctx, n_mels] = [3000, n_mels]</code>（经 Conv 后再变为 1500 步）。
+            因此 large-v3 的 Mel 前端输出在频率轴上比 80 Mel 模型<strong>高 60%</strong>，但时间轴分辨率不变（仍 100 帧/秒）。
+        </p>
+
+        <h3>3.5 80 vs 128 Mel 可视化对比</h3>
+        <div class="viz-grid">
+            <div class="viz-card">
+                <h4>Mel 滤波器组密度对比</h4>
+                <div class="desc">选择模型查看滤波器数量差异（示意三角滤波器，非精确权重）</div>
+                <div class="viz-controls" style="margin-bottom:8px">
+                    <label>模型：
+                        <select id="modelSelect">
+                            <option value="80">tiny / base / small / medium / large-v1/v2（80 Mel）</option>
+                            <option value="128">large-v3 / large-v3-turbo（128 Mel）</option>
+                        </select>
+                    </label>
+                </div>
+                <canvas id="melFilterCompareCanvas" width="480" height="220"></canvas>
+            </div>
+            <div class="viz-card">
+                <h4>频谱图频率轴高度对比</h4>
+                <div class="desc">相同音频时长下，128 Mel 频谱在频率方向更"高"</div>
+                <canvas id="melHeightCanvas" width="480" height="220"></canvas>
+            </div>
+        </div>
+
+        <h3>3.6 不影响 Mel 计算的模型差异</h3>
+        <table>
+            <thead>
+                <tr><th>差异项</th><th>说明</th><th>对 log_mel_spectrogram 的影响</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Encoder/Decoder 层数、宽度</td><td>n_audio_layer, n_audio_state 等</td><td>无 — 仅影响后续 Transformer 推理</td></tr>
+                <tr><td>量化（Q5_0 / Q8_0）</td><td>权重 INT 格式</td><td>无 — Mel 前端始终 float32</td></tr>
+                <tr><td>.en vs 多语言</td><td>n_vocab 51864 vs 51865</td><td>无 — Mel 参数相同</td></tr>
+                <tr><td>tinydiarize（-tdrz）</td><td>额外 special token</td><td>无 — Mel 参数相同</td></tr>
+                <tr><td>large-v3-turbo</td><td>Decoder 仅 4 层（蒸馏）</td><td>无 — Mel 仍为 128，与 large-v3 相同</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- ===== 4. Padding ===== -->
+    <section id="padding">
+        <h2>4. 音频填充（Reflect + Zero）</h2>
+        <p>
+            在 STFT 之前，<code>log_mel_spectrogram()</code> 对输入 PCM 做两阶段填充，
+            与 OpenAI <code>whisper/audio.py</code> 行为对齐。
+        </p>
+
+        <h4>填充布局（示意，比例非精确）</h4>
+        <div class="pad-diagram">
+            <div class="pad-seg pad-reflect">反射填充<br>200 samples<br>(12.5 ms)</div>
+            <div class="pad-seg pad-audio">原始音频<br>n_samples</div>
+            <div class="pad-seg pad-zero">零填充<br>30 秒<br>(480,000 samples)</div>
+            <div class="pad-seg pad-reflect-end">反射填充<br>200 samples</div>
+        </div>
+
+        <ul>
+            <li><strong>首部反射填充</strong>：将 <code>samples[1..200]</code> 逆序复制到缓冲区开头（<code>reverse_copy</code>），避免帧边界突变。</li>
+            <li><strong>原始音频</strong>：从偏移 <code>stage_2_pad</code>（200）处拷贝。</li>
+            <li><strong>尾部零填充</strong>：追加 30 秒静音，使长音频也能按固定 30s 窗口切片处理。</li>
+            <li><strong>尾部反射填充</strong>：再追加 200 个零（代码中 stage_1_pad 区域末尾）。</li>
+        </ul>
+
+        <h3>帧数计算</h3>
+        <div class="formula">
+            n_len = (samples_padded.size − frame_size) / frame_step<br>
+            n_len_org = 1 + (n_samples + stage_2_pad − frame_size) / frame_step
+        </div>
+        <p>
+            <code>n_len</code> 含 30s 零填充产生的额外帧；<code>n_len_org</code> 仅对应真实音频时长，后续时间戳换算会用到。
+        </p>
+    </section>
+
+    <!-- ===== 4. STFT ===== -->
+    <section id="stft">
+        <h2>5. STFT：Hann 窗 + FFT + 功率谱</h2>
+        <p>
+            多线程 worker（<code>log_mel_spectrogram_worker_thread</code>）按帧索引 <code>i</code> 并行处理，
+            每帧偏移 <code>offset = i × frame_step</code>。
+        </p>
+
+        <h3>Step 5.1 — Hann 窗</h3>
+        <div class="formula">
+            w[n] = 0.5 × (1 − cos(2πn / N)) &nbsp;&nbsp;（periodic=true，与 PyTorch 一致）
+        </div>
+        <p>窗函数在进程启动时预计算，存于 <code>global_cache.hann_window[400]</code>。</p>
+
+        <h3>Step 5.2 — 加窗取帧</h3>
+        <pre><code><span class="keyword">for</span> (<span class="keyword">int</span> j = <span class="number">0</span>; j &lt; min(frame_size, n_samples - offset); j++)
+    fft_in[j] = hann[j] * samples[offset + j];</code></pre>
+
+        <h3>Step 5.3 — Cooley-Tukey FFT</h3>
+        <p>
+            实现位于 <code>fft()</code> / <code>dft()</code>，使用预计算的 sin/cos 查找表加速。
+            输入 400 点实信号，输出 400 点复数频谱。
+        </p>
+
+        <h3>Step 5.4 — 功率谱 |X|²</h3>
+        <div class="formula">
+            P[k] = Re(X[k])² + Im(X[k])² &nbsp;&nbsp; for k = 0 … 200
+        </div>
+        <p>只保留 Nyquist 以内的 201 个 bin（<code>n_fft = 1 + N_FFT/2</code>）。</p>
+
+        <div class="note">
+            代码注释提到使用 <code>pow(x,2)</code> 会导致推理质量下降，因此采用乘法形式计算模平方。
+        </div>
+    </section>
+
+    <!-- ===== 5. Mel ===== -->
+    <section id="mel">
+        <h2>6. Mel 滤波器组 + log₁₀</h2>
+
+        <h3>Mel 滤波</h3>
+        <p>对每个 Mel 频带 <code>j</code>，将功率谱与滤波器权重做点积：</p>
+        <div class="formula">
+            S[j, i] = Σ<sub>k=0</sub><sup>200</sup> P[k] × filters[j × n_fft + k]
+        </div>
+
+        <h3>对数压缩</h3>
+        <div class="formula">
+            M[j, i] = log₁₀(max(S[j, i], 10<sup>−10</sup>))
+        </div>
+        <p>结果写入 <code>mel.data[j * mel.n_len + i]</code>，即<strong>行 = Mel 频带，列 = 时间帧</strong>。</p>
+
+        <div class="note success">
+            超出真实音频长度的帧（30s 零填充区域）不再做 FFT，直接填入 <code>log10(1e-10) = −10</code>。
+        </div>
+    </section>
+
+    <!-- ===== 6. Normalize ===== -->
+    <section id="normalize">
+        <h2>7. 动态范围截断与归一化</h2>
+        <p>STFT + Mel 之后，对所有元素做全局后处理（与 PyTorch 版一致）：</p>
+
+        <ol>
+            <li>找全局最大值 <code>mmax</code></li>
+            <li><code>mmax -= 8.0</code> — 保留 top 8 dB 动态范围</li>
+            <li>低于 <code>mmax</code> 的值截断到 <code>mmax</code></li>
+            <li>线性缩放：<code>value = (value + 4.0) / 4.0</code></li>
+        </ol>
+
+        <div class="viz-grid">
+            <div class="viz-card">
+                <h4>归一化效果示意</h4>
+                <div class="desc">横轴：原始 log₁₀ 能量；纵轴：归一化后值。虚线为 mmax−8 截断线。</div>
+                <canvas id="normCanvas" width="480" height="220"></canvas>
+            </div>
+        </div>
+
+        <pre><code><span class="keyword">double</span> mmax = -<span class="number">1e20</span>;
+<span class="keyword">for</span> (...) <span class="keyword">if</span> (mel.data[i] &gt; mmax) mmax = mel.data[i];
+mmax -= <span class="number">8.0</span>;
+<span class="keyword">for</span> (...) {
+    <span class="keyword">if</span> (mel.data[i] &lt; mmax) mel.data[i] = mmax;
+    mel.data[i] = (mel.data[i] + <span class="number">4.0</span>) / <span class="number">4.0</span>;
+}</code></pre>
+    </section>
+
+    <!-- ===== 7. Visual ===== -->
+    <section id="visual">
+        <h2>8. 交互式可视化</h2>
+        <p>以下图表基于 Whisper 默认参数（16 kHz, N_FFT=400, hop=160, n_mel=80）的数学模型生成，用于直观理解各步骤。</p>
+
+        <div class="viz-grid">
+            <div class="viz-card">
+                <h4>Hann 窗函数</h4>
+                <div class="desc">400 点周期 Hann 窗，帧长 25 ms</div>
+                <canvas id="hannCanvas" width="480" height="200"></canvas>
+            </div>
+
+            <div class="viz-card">
+                <h4>模拟 Mel 滤波器组</h4>
+                <div class="desc">80 个三角 Mel 滤波器覆盖 0–8 kHz（示意，非模型精确权重）</div>
+                <canvas id="melFilterCanvas" width="480" height="200"></canvas>
+            </div>
+        </div>
+
+        <div class="viz-card" style="margin: 20px 0;">
+            <h4>STFT 帧滑动示意</h4>
+            <div class="desc">蓝色区域为当前帧（400 点），每帧右移 160 点（10 ms）。拖动滑块查看不同帧位置。</div>
+            <div class="frame-viz" id="frameViz">
+                <div class="frame-wave" id="frameWave"></div>
+                <div class="frame-window" id="frameWindow"></div>
+            </div>
+            <div class="viz-controls">
+                <label>帧索引 i: <input type="range" id="frameSlider" min="0" max="50" value="0"><span id="frameLabel">0</span></label>
+                <span id="frameTime">t = 0.0 ms</span>
+            </div>
+        </div>
+
+        <div class="viz-card">
+            <h4>模拟 Log Mel Spectrogram 热力图</h4>
+            <div class="desc">由合成语音状信号生成的示意频谱图（非真实推理结果）。鼠标悬停查看坐标。</div>
+            <canvas id="specCanvas" width="640" height="280"></canvas>
+            <div class="viz-controls">
+                <span id="specTooltip" style="color:var(--text-muted);min-height:1.2em">移动鼠标到频谱图上</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== 8. Encoder ===== -->
+    <section id="encoder">
+        <h2>9. 送入 Encoder 的张量布局</h2>
+        <p>
+            Mel 计算完成后存入 <code>whisper_state::mel</code>。
+            编码时 <code>whisper_encode_internal()</code> 按 <code>mel_offset</code> 切片，
+            拷贝到 GGML 张量 <code>mel</code>，形状约为 <code>[2×n_ctx, n_mels]</code>。
+        </p>
+
+        <div class="matrix-viz">
+            <div class="axis-label">Mel 频带 j (0→79)</div>
+            <div>
+                <div class="matrix-box" id="matrixDemo"></div>
+                <div style="text-align:center;font-size:0.82rem;color:var(--text-muted);margin-top:6px">
+                    时间帧 i → &nbsp; data[j × n_len + i]
+                </div>
+            </div>
+        </div>
+
+        <pre><code><span class="comment">// whisper_encode_internal — 切片拷贝到 encoder 输入</span>
+<span class="keyword">for</span> (<span class="keyword">int</span> j = <span class="number">0</span>; j &lt; mel_inp.n_mel; ++j)
+    <span class="keyword">for</span> (<span class="keyword">int</span> i = i0; i &lt; i1; ++i)
+        dst[j * <span class="number">2</span> * n_ctx + (i - i0)] = mel_inp.data[j * mel_inp.n_len + i];</code></pre>
+    </section>
+
+    <!-- ===== 9. API ===== -->
+    <section id="api">
+        <h2>10. 公共 API 与调用链</h2>
+
+        <table>
+            <thead>
+                <tr><th>函数</th><th>作用</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>whisper_pcm_to_mel()</code></td><td>使用默认 state，PCM → Mel</td></tr>
+                <tr><td><code>whisper_pcm_to_mel_with_state()</code></td><td>指定 state，支持并行推理</td></tr>
+                <tr><td><code>whisper_set_mel()</code></td><td>跳过计算，直接注入外部 Mel 数据</td></tr>
+                <tr><td><code>whisper_encode()</code></td><td>对已计算的 Mel 运行 Encoder</td></tr>
+                <tr><td><code>whisper_full()</code></td><td>内部自动调用 pcm_to_mel + encode + decode</td></tr>
+            </tbody>
+        </table>
+
+        <pre><code><span class="comment">// 典型 CLI 调用链</span>
+read_audio_data(...)           <span class="comment">// 16 kHz float32 PCM</span>
+    ↓
+whisper_full_parallel(...)
+    ↓ 内部
+whisper_pcm_to_mel_with_state(...)
+    ↓
+log_mel_spectrogram(...)       <span class="comment">// 本文档核心</span>
+    ↓
+whisper_encode_internal(...)   <span class="comment">// Conv1d → Transformer Encoder</span>
+    ↓
+whisper_decode_internal(...)   <span class="comment">// 自回归解码</span></code></pre>
+
+        <div class="note info">
+            设置 <code>debug=true</code>（仅内部调试）时，会将最终 Mel 数据导出为 <code>log_mel_spectrogram.json</code>。
+        </div>
+    </section>
+
+    <footer>
+        whisper.cpp · Log Mel Spectrogram · 基于 <code>src/whisper.cpp</code> 源码分析
+    </footer>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    const SAMPLE_RATE = 16000;
+    const N_FFT = 400;
+    const HOP = 160;
+    const N_MEL = 80;
+
+    // ── Hann window ──
+    function hann(n, N) {
+        return 0.5 * (1 - Math.cos(2 * Math.PI * n / N)); // periodic
+    }
+
+    function drawHann() {
+        const canvas = document.getElementById('hannCanvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        const pad = { l: 44, r: 16, t: 16, b: 32 };
+        const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, W, H);
+
+        // grid
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1;
+        for (let y = 0; y <= 4; y++) {
+            const yy = pad.t + plotH * (1 - y / 4);
+            ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(W - pad.r, yy); ctx.stroke();
+        }
+
+        // curve
+        ctx.beginPath();
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < N_FFT; i++) {
+            const x = pad.l + (i / (N_FFT - 1)) * plotW;
+            const y = pad.t + plotH * (1 - hann(i, N_FFT));
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // fill
+        ctx.lineTo(pad.l + plotW, pad.t + plotH);
+        ctx.lineTo(pad.l, pad.t + plotH);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(56,189,248,0.15)';
+        ctx.fill();
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('sample n (0 → 399)', pad.l + plotW / 2, H - 8);
+        ctx.save();
+        ctx.translate(14, pad.t + plotH / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('w[n]', 0, 0);
+        ctx.restore();
+        ctx.textAlign = 'left';
+        ctx.fillText('1.0', pad.l - 28, pad.t + 4);
+        ctx.fillText('0.0', pad.l - 28, pad.t + plotH + 4);
+    }
+
+    // ── Mel filterbank (schematic) ──
+    function hzToMel(hz) { return 2595 * Math.log10(1 + hz / 700); }
+    function melToHz(mel) { return 700 * (Math.pow(10, mel / 2595) - 1); }
+
+    function drawMelFilterBank(canvas, nMel, title) {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        const pad = { l: 44, r: 16, t: 28, b: 32 };
+        const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+        const maxHz = 8000;
+
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, W, H);
+
+        const melMax = hzToMel(maxHz);
+        const melPoints = [];
+        for (let i = 0; i <= nMel + 1; i++) {
+            melPoints.push(melToHz(melMax * i / (nMel + 1)));
+        }
+
+        const colors = ['#f472b6','#fb923c','#facc15','#4ade80','#38bdf8','#a78bfa'];
+        const lineW = nMel > 80 ? 0.8 : 1.2;
+
+        for (let m = 0; m < nMel; m++) {
+            const left = melPoints[m], center = melPoints[m + 1], right = melPoints[m + 2];
+            ctx.beginPath();
+            ctx.strokeStyle = colors[m % colors.length];
+            ctx.globalAlpha = nMel > 80 ? 0.45 : 0.55;
+            ctx.lineWidth = lineW;
+
+            const pts = [[left, 0], [center, 1], [right, 0]];
+            for (let p = 0; p < pts.length; p++) {
+                const x = pad.l + (pts[p][0] / maxHz) * plotW;
+                const y = pad.t + plotH * (1 - pts[p][1]);
+                p === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+
+        ctx.strokeStyle = '#475569';
+        ctx.beginPath();
+        ctx.moveTo(pad.l, pad.t + plotH);
+        ctx.lineTo(W - pad.r, pad.t + plotH);
+        ctx.stroke();
+
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(title || (nMel + ' Mel filters'), pad.l, 18);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Frequency (Hz)', pad.l + plotW / 2, H - 8);
+        [0, 2000, 4000, 6000, 8000].forEach(hz => {
+            const x = pad.l + (hz / maxHz) * plotW;
+            ctx.fillText(hz, x, pad.t + plotH + 14);
+        });
+    }
+
+    function drawMelFilters() {
+        drawMelFilterBank(document.getElementById('melFilterCanvas'), N_MEL, '80 Mel（默认示意）');
+    }
+
+    function drawMelFilterCompare() {
+        const nMel = parseInt(document.getElementById('modelSelect').value, 10);
+        const label = nMel === 128 ? '128 Mel — large-v3 / turbo' : '80 Mel — tiny ~ large-v2';
+        drawMelFilterBank(document.getElementById('melFilterCompareCanvas'), nMel, label);
+    }
+
+    function drawMelHeightCompare() {
+        const canvas = document.getElementById('melHeightCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, W, H);
+
+        const nFrames = 80; // same time axis
+        const configs = [
+            { nMel: 80,  x: 40,  label: '80 Mel\nlarge-v2', color: '#38bdf8' },
+            { nMel: 128, x: 260, label: '128 Mel\nlarge-v3', color: '#a78bfa' }
+        ];
+        const maxMel = 128;
+        const barW = 140;
+        const maxBarH = 150;
+        const baseY = H - 40;
+
+        configs.forEach(cfg => {
+            const barH = (cfg.nMel / maxMel) * maxBarH;
+            const x0 = cfg.x;
+
+            // pseudo spectrogram cells
+            for (let m = 0; m < cfg.nMel; m++) {
+                for (let t = 0; t < nFrames; t++) {
+                    const cellH = barH / cfg.nMel;
+                    const cellW = barW / nFrames;
+                    const v = 0.3 + 0.7 * Math.abs(Math.sin(t * 0.15 + m * 0.08));
+                    ctx.fillStyle = `rgba(${cfg.nMel === 128 ? '167,139,250' : '56,189,248'},${v * 0.85})`;
+                    ctx.fillRect(x0 + t * cellW, baseY - barH + m * cellH, cellW + 0.5, cellH + 0.5);
+                }
+            }
+
+            ctx.strokeStyle = cfg.color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x0, baseY - barH, barW, barH);
+
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            cfg.label.split('\n').forEach((line, i) => {
+                ctx.fillText(line, x0 + barW / 2, baseY + 16 + i * 14);
+            });
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText(cfg.nMel + ' × ' + nFrames, x0 + barW / 2, baseY - barH - 8);
+        });
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('时间帧 →（相同，100 帧/秒）', W / 2, H - 8);
+        ctx.save();
+        ctx.translate(12, H / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('Mel 频带 ↑', 0, 0);
+        ctx.restore();
+    }
+
+    function initModelCompare() {
+        const sel = document.getElementById('modelSelect');
+        if (sel) {
+            sel.addEventListener('change', drawMelFilterCompare);
+            drawMelFilterCompare();
+            drawMelHeightCompare();
+        }
+    }
+
+    // ── Normalization curve ──
+    function drawNorm() {
+        const canvas = document.getElementById('normCanvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        const pad = { l: 44, r: 16, t: 16, b: 32 };
+        const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, W, H);
+
+        const mmax = 1.5;
+        const clamp = mmax - 8.0;
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#4ade80';
+        ctx.lineWidth = 2;
+        for (let x = -12; x <= 4; x += 0.05) {
+            let v = x;
+            if (v < clamp) v = clamp;
+            v = (v + 4) / 4;
+            const px = pad.l + ((x + 12) / 16) * plotW;
+            const py = pad.t + plotH * (1 - (v + 1) / 3);
+            x <= -11.95 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+
+        const clampX = pad.l + ((clamp + 12) / 16) * plotW;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = '#f87171';
+        ctx.beginPath();
+        ctx.moveTo(clampX, pad.t);
+        ctx.lineTo(clampX, pad.t + plotH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('mmax−8 截断', clampX + 4, pad.t + 14);
+        ctx.textAlign = 'center';
+        ctx.fillText('原始 log₁₀ 值', pad.l + plotW / 2, H - 8);
+    }
+
+    // ── STFT frame slider ──
+    function initFrameViz() {
+        const waveEl = document.getElementById('frameWave');
+        const winEl = document.getElementById('frameWindow');
+        const slider = document.getElementById('frameSlider');
+        const label = document.getElementById('frameLabel');
+        const timeEl = document.getElementById('frameTime');
+        const container = document.getElementById('frameViz');
+
+        const totalSamples = 800;
+        const samples = [];
+        for (let i = 0; i < totalSamples; i++) {
+            samples.push(
+                0.4 * Math.sin(2 * Math.PI * 3 * i / 40) +
+                0.25 * Math.sin(2 * Math.PI * 11 * i / 40) +
+                0.1 * (Math.random() - 0.5)
+            );
+        }
+
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('width', '100%');
+        svg.setAttribute('height', '100%');
+        svg.setAttribute('preserveAspectRatio', 'none');
+        const path = document.createElementNS(svgNS, 'path');
+        let d = '';
+        const W = 600;
+        for (let i = 0; i < totalSamples; i++) {
+            const x = (i / totalSamples) * W;
+            const y = 40 - samples[i] * 35;
+            d += (i === 0 ? 'M' : 'L') + x + ',' + y;
+        }
+        path.setAttribute('d', d);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', '#64748b');
+        path.setAttribute('stroke-width', '1');
+        svg.appendChild(path);
+        waveEl.appendChild(svg);
+
+        function update() {
+            const i = parseInt(slider.value, 10);
+            const offset = i * HOP;
+            const pctStart = (offset / totalSamples) * 100;
+            const pctWidth = (N_FFT / totalSamples) * 100;
+            winEl.style.left = pctStart + '%';
+            winEl.style.width = pctWidth + '%';
+            label.textContent = i;
+            timeEl.textContent = 't = ' + (offset / SAMPLE_RATE * 1000).toFixed(1) + ' ms  |  帧长 25 ms, 步进 10 ms';
+        }
+
+        slider.addEventListener('input', update);
+        update();
+    }
+
+    // ── Simulated spectrogram ──
+    function drawSpectrogram() {
+        const canvas = document.getElementById('specCanvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        const nFrames = 120;
+        const nMel = 80;
+
+        const data = new Float32Array(nMel * nFrames);
+        for (let t = 0; t < nFrames; t++) {
+            const time = t * HOP / SAMPLE_RATE;
+            for (let m = 0; m < nMel; m++) {
+                const freq = m / nMel;
+                let energy = -6;
+                // formant-like peaks
+                energy += 3 * Math.exp(-Math.pow(freq - 0.15 - 0.05 * Math.sin(time * 4), 2) / 0.002);
+                energy += 2 * Math.exp(-Math.pow(freq - 0.35, 2) / 0.003);
+                energy += 1.5 * Math.exp(-Math.pow(freq - 0.55 + 0.03 * Math.cos(time * 6), 2) / 0.004);
+                energy += 0.3 * Math.sin(time * 20 + m * 0.3);
+                // post-norm approx
+                energy = Math.max(energy, -2);
+                energy = (energy + 4) / 4;
+                data[m * nFrames + t] = energy;
+            }
+        }
+
+        const img = ctx.createImageData(W, H);
+        for (let py = 0; py < H; py++) {
+            for (let px = 0; px < W; px++) {
+                const t = Math.floor(px / W * nFrames);
+                const m = Math.floor((1 - py / H) * nMel);
+                const v = data[m * nFrames + t];
+                const c = melColor(v);
+                const idx = (py * W + px) * 4;
+                img.data[idx] = c[0];
+                img.data[idx + 1] = c[1];
+                img.data[idx + 2] = c[2];
+                img.data[idx + 3] = 255;
+            }
+        }
+        ctx.putImageData(img, 0, 0);
+
+        // axes labels
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('时间 →', W - 52, H - 6);
+        ctx.save();
+        ctx.translate(10, H / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('Mel ↑', 0, 0);
+        ctx.restore();
+
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            const px = (e.clientX - rect.left) / rect.width * W;
+            const py = (e.clientY - rect.top) / rect.height * H;
+            const t = Math.floor(px / W * nFrames);
+            const m = Math.floor((1 - py / H) * nMel);
+            const ms = (t * HOP / SAMPLE_RATE * 1000).toFixed(0);
+            document.getElementById('specTooltip').textContent =
+                `帧 ${t}  |  Mel 频带 ${m}  |  ~${ms} ms  |  值 ≈ ${data[m * nFrames + t].toFixed(3)}`;
+        });
+    }
+
+    function melColor(v) {
+        v = Math.max(0, Math.min(1, (v + 0.2) / 1.4));
+        const r = Math.floor(v < 0.5 ? 0 : (v - 0.5) * 2 * 255);
+        const g = Math.floor(v < 0.5 ? v * 2 * 255 : 255 - (v - 0.5) * 2 * 128);
+        const b = Math.floor((1 - v) * 180 + 20);
+        return [r, g, b];
+    }
+
+    // ── Matrix demo ──
+    function initMatrix() {
+        const box = document.getElementById('matrixDemo');
+        for (let i = 0; i < 64; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'matrix-cell';
+            const t = i % 8, m = Math.floor(i / 8);
+            const hue = 220 - m * 8;
+            const light = 55 + t * 4;
+            cell.style.background = `hsl(${hue}, 70%, ${light}%)`;
+            box.appendChild(cell);
+        }
+    }
+
+    drawHann();
+    drawMelFilters();
+    drawNorm();
+    initFrameViz();
+    drawSpectrogram();
+    initMatrix();
+    initModelCompare();
+})();
+</script>
+</body>
+</html>

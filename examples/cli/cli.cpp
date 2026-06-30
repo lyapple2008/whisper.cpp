@@ -1035,7 +1035,7 @@ int main(int argc, char ** argv) {
     }
 
     // diarize：基于立体声能量差异，需要双声道音频，简单但依赖声道分离
-    // tinydiarize：基于模型检测，需要支持 TDRZ 的模型，可处理单声道，更智能
+    // tinydiarize：基于模型检测，需要支持 TDRZ 的模型，可处理单声道，更智能，只能给出说话人切换点，无法区分不同说话人
     if (params.diarize && params.tinydiarize) {
         fprintf(stderr, "error: cannot use both --diarize and --tinydiarize\n");
         whisper_print_usage(argc, argv, params);
@@ -1049,6 +1049,7 @@ int main(int argc, char ** argv) {
     // whisper init
     struct whisper_context_params cparams = whisper_context_default_params();
 
+    // params为whisper_params类型，是业务层的参数配置抽象，而cparams为whisper_context_params类型，是whisper.cpp库的上下文参数配置结构体
     cparams.use_gpu    = params.use_gpu;
     cparams.gpu_device = params.gpu_device;
     cparams.flash_attn = params.flash_attn;
@@ -1329,6 +1330,7 @@ int main(int argc, char ** argv) {
                 wparams.abort_callback_user_data = &is_aborted;
             }
 
+            // mars-note: 音频分块推理
             if (whisper_full_parallel(ctx, wparams, pcmf32.data(), pcmf32.size(), params.n_processors) != 0) {
                 fprintf(stderr, "%s: failed to process audio\n", argv[0]);
                 return 10;

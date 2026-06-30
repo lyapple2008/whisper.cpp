@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>whisper-cli 示例程序深度解析</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --code-bg: #1e293b;
+            --code-text: #e2e8f0;
+            --accent: #0ea5e9;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --purple: #8b5cf6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            line-height: 1.7;
+            color: var(--text);
+            background: var(--bg);
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+
+        /* ===== Header ===== */
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 64px 24px;
+            border-radius: 16px;
+            margin-bottom: 32px;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .hero h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .hero p {
+            font-size: 1.1rem;
+            opacity: 0.95;
+            max-width: 800px;
+        }
+
+        .hero .breadcrumb {
+            font-size: 0.9rem;
+            opacity: 0.85;
+            margin-bottom: 16px;
+        }
+
+        .hero .breadcrumb a {
+            color: white;
+            text-decoration: none;
+        }
+
+        /* ===== Navigation ===== */
+        .toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 32px;
+            position: sticky;
+            top: 16px;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            overflow: hidden;
+        }
+
+        .toc-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+
+        .toc-header:hover {
+            background: var(--bg);
+        }
+
+        .toc-header h3 {
+            color: var(--primary);
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 0;
+        }
+
+        .toc-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--bg);
+            color: var(--primary);
+            transition: transform 0.3s ease;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .toc.expanded .toc-toggle {
+            transform: rotate(180deg);
+        }
+
+        .toc-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.35s ease, padding 0.35s ease;
+            padding: 0 24px;
+        }
+
+        .toc.expanded .toc-content {
+            max-height: 800px;
+            padding: 4px 24px 20px;
+        }
+
+        .toc ol {
+            list-style: none;
+            counter-reset: toc-counter;
+        }
+
+        .toc ol li {
+            counter-increment: toc-counter;
+            padding: 4px 0;
+        }
+
+        .toc ol li a {
+            color: var(--text);
+            text-decoration: none;
+ transition: color 0.2s;
+            display: block;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.95rem;
+        }
+
+        .toc ol li a::before {
+            content: counter(toc-counter, decimal) ". ";
+            color: var(--primary);
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .toc ol li a:hover {
+            color: var(--primary);
+            background: var(--bg);
+        }
+
+        /* ===== Sections ===== */
+        section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+
+        section h2 {
+            color: var(--primary);
+            font-size: 1.75rem;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        section h2 .icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            background: var(--primary);
+            color: white;
+            border-radius: 8px;
+            font-size: 1.1rem;
+        }
+
+        section h3 {
+            color: var(--text);
+            font-size: 1.25rem;
+            margin-top: 24px;
+            margin-bottom: 12px;
+            padding-left: 12px;
+            border-left: 4px solid var(--primary);
+        }
+
+        section h4 {
+            color: var(--text-muted);
+            font-size: 1.05rem;
+            margin-top: 16px;
+            margin-bottom: 8px;
+        }
+
+        p {
+            margin-bottom: 12px;
+            color: var(--text);
+        }
+
+        ul, ol {
+            margin-left: 24px;
+            margin-bottom: 12px;
+        }
+
+        li {
+            margin-bottom: 6px;
+        }
+
+        /* ===== Code blocks ===== */
+        code {
+            font-family: "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
+            background: #f1f5f9;
+            color: var(--primary-dark);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 16px 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 12px 0 16px;
+            font-size: 0.875rem;
+            line-height: 1.6;
+            border-left: 4px solid var(--primary);
+        }
+
+        pre code {
+            background: transparent;
+            color: var(--code-text);
+            padding: 0;
+            font-size: 0.875rem;
+        }
+
+        .comment { color: #94a3b8; }
+        .keyword { color: #c084fc; }
+        .string  { color: #86efac; }
+        .func    { color: #93c5fd; }
+        .type    { color: #fcd34d; }
+
+        /* ===== Tables ===== */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 0.95rem;
+        }
+
+        th, td {
+            padding: 10px 14px;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--bg);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) {
+            background: #f9fafb;
+        }
+
+        /* ===== Callouts ===== */
+        .callout {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 16px 0;
+            border-left: 4px solid;
+            background: #f9fafb;
+        }
+
+        .callout.info    { border-color: var(--accent);   background: #f0f9ff; }
+        .callout.success { border-color: var(--success);  background: #f0fdf4; }
+        .callout.warning { border-color: var(--warning);  background: #fffbeb; }
+        .callout.danger  { border-color: var(--danger);   background: #fef2f2; }
+        .callout.note    { border-color: var(--purple);   background: #faf5ff; }
+
+        .callout-title {
+            font-weight: 700;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: var(--primary);
+            color: white;
+            margin-right: 4px;
+        }
+
+        .badge.success { background: var(--success); }
+        .badge.warning { background: var(--warning); }
+        .badge.danger  { background: var(--danger); }
+        .badge.purple  { background: var(--purple); }
+
+        /* ===== Cards ===== */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin: 16px 0;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.2s;
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
+        }
+
+        .card .card-title {
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+            font-size: 1.05rem;
+        }
+
+        .card .card-body {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* ===== Flow diagram ===== */
+        .flow {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .flow-step {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            border-left: 4px solid var(--primary);
+            padding: 14px 18px;
+            border-radius: 6px;
+            position: relative;
+        }
+
+        .flow-step .step-num {
+            position: absolute;
+            left: -14px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 28px;
+            height: 28px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+
+        .flow-step .step-title {
+            font-weight: 700;
+            margin-left: 20px;
+            color: var(--primary-dark);
+        }
+
+        .flow-step .step-desc {
+            margin-left: 20px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* ===== Module diagram ===== */
+        .dep-diagram {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 24px;
+            border-radius: 8px;
+            font-family: "SF Mono", Menlo, monospace;
+            font-size: 0.85rem;
+            line-height: 1.8;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        /* ===== Parameter table styles ===== */
+        .param-table th:first-child {
+            width: 25%;
+        }
+
+        /* ===== Footer ===== */
+        footer {
+            text-align: center;
+            padding: 32px 16px;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            border-top: 1px solid var(--border);
+            margin-top: 32px;
+        }
+
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        /* ===== Utility ===== */
+        .divider {
+            border: 0;
+            border-top: 2px dashed var(--border);
+            margin: 24px 0;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 1.75rem; }
+            .hero { padding: 40px 20px; }
+            section { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <!-- ============== HERO ============== -->
+    <div class="hero">
+        <div class="breadcrumb">📂 <a href="index.html">whisper.cpp 文档</a> / 示例程序解析</div>
+        <h1>whisper-cli 示例程序深度解析</h1>
+        <p>examples/cli/cli.cpp 是 whisper.cpp 项目最核心的参考实现，完整展示了 whisper C API 的调用范式：从命令行参数解析、音频加载、模型推理到多格式结果输出。本文将以 1370 行源码为蓝本，逐段拆解其工作机理与工程设计。</p>
+    </div>
+
+    <!-- ============== TOC ============== -->
+    <nav class="toc expanded" id="toc">
+        <div class="toc-header" onclick="document.getElementById('toc').classList.toggle('expanded')">
+            <h3>📑 目录（点击展开/折叠）</h3>
+            <span class="toc-toggle">▼</span>
+        </div>
+        <div class="toc-content">
+            <ol>
+                <li><a href="#overview">整体概览与文件结构</a></li>
+                <li><a href="#deps">编译与模块依赖</a></li>
+                <li><a href="#flow">执行流程总览</a></li>
+                <li><a href="#params">命令行参数结构体 whisper_params</a></li>
+                <li><a href="#parse">参数解析函数 whisper_params_parse</a></li>
+                <li><a href="#callbacks">回调函数设计</a></li>
+                <li><a href="#outputs">多格式输出实现</a></li>
+                <li><a href="#main">主函数 main 详解</a></li>
+                <li><a href="#keyapi">核心 API 调用清单</a></li>
+                <li><a href="#summary">设计模式总结</a></li>
+            </ol>
+        </div>
+    </nav>
+
+    <script>
+        // 默认折叠目录，节省屏幕空间
+        document.getElementById('toc').classList.remove('expanded');
+    </script>
+
+    <!-- ============== 1. OVERVIEW ============== -->
+    <section id="overview">
+        <h2><span class="icon">①</span>整体概览与文件结构</h2>
+
+        <h3>1.1 项目位置与角色</h3>
+        <p><code>examples/cli/cli.cpp</code> 是 whisper.cpp 的旗舰示例程序，构建产物名为 <code>whisper-cli</code>（参见 <a href="../examples/cli/CMakeLists.txt">examples/cli/CMakeLists.txt:1</a>）。该示例承担三个角色：</p>
+
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-title">🛠️ 实用工具</div>
+                <div class="card-body">可直接运行的命令行工具，覆盖 wav/mp3/flac/ogg 等多种音频格式，支持 8+ 种结果输出格式。</div>
+            </div>
+            <div class="card">
+                <div class="card-title">📖 API 参考</div>
+                <div class="card-body">演示了几乎所有公开的 whisper.h 函数调用方式，是集成 whisper.cpp 的最佳起点。</div>
+            </div>
+            <div class="card">
+                <div class="card-title">🧪 功能测试床</div>
+                <div class="card-body">VAD、DTW、语法约束、TDRZ 小型说话人分离、立体声能量分离等高级特性均有体现。</div>
+            </div>
+        </div>
+
+        <h3>1.2 源码体量与结构</h3>
+        <p>本文件共 <strong>1370 行</strong>，按职责可划分为 <strong>9 大模块</strong>（参见 <a href="../examples/cli/cli.cpp">cli.cpp</a> 实际行号）：</p>
+
+        <table>
+            <thead>
+                <tr><th>行号区间</th><th>模块</th><th>职责</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>1-22</code></td><td>头文件与平台宏</td><td>包含 common、whisper.h、grammar-parser.h；Windows 编码处理</td></tr>
+                <tr><td><code>24-32</code></td><td>工具函数 <code>replace_all</code></td><td>字符串替换（用于卡拉 OK 字幕生成）</td></tr>
+                <tr><td><code>34-115</code></td><td><code>struct whisper_params</code></td><td>80+ 字段的命令行参数聚合结构</td></tr>
+                <tr><td><code>132-232</code></td><td><code>whisper_params_parse</code></td><td>命令行参数解析器</td></tr>
+                <tr><td><code>234-311</code></td><td><code>whisper_print_usage</code></td><td>帮助信息输出</td></tr>
+                <tr><td><code>313-453</code></td><td>回调与打印函数</td><td>进度、片段、置信度着色等</td></tr>
+                <tr><td><code>455-614</code></td><td>格式化输出（txt/vtt/srt/csv/score）</td><td>5 种标准文本输出</td></tr>
+                <tr><td><code>616-957</code></td><td>结构化输出（json/lrc/wts）</td><td>JSON 全字段、LRC 歌词、卡拉 OK 视频脚本</td></tr>
+                <tr><td><code>962-1370</code></td><td><code>main()</code></td><td>程序入口与编排逻辑</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- ============== 2. DEPS ============== -->
+    <section id="deps">
+        <h2><span class="icon">②</span>编译与模块依赖</h2>
+
+        <h3>2.1 CMake 构建脚本</h3>
+        <p>cli 自身的 CMake 配置极为精简（<a href="../examples/cli/CMakeLists.txt">examples/cli/CMakeLists.txt</a>）：</p>
+
+<pre><code><span class="keyword">set</span>(TARGET whisper-cli)
+<span class="keyword">add_executable</span>(${TARGET} cli.cpp)
+
+<span class="keyword">include</span>(DefaultTargetOptions)
+
+<span class="comment"># 关键链接：common 库 + whisper 核心库 + FFmpeg + 线程库</span>
+<span class="keyword">target_link_libraries</span>(${TARGET} PRIVATE
+    common
+    whisper
+    ${FFMPEG_LIBRARIES}
+    ${CMAKE_THREAD_LIBS_INIT})
+
+<span class="keyword">install</span>(TARGETS ${TARGET} RUNTIME)</code></pre>
+
+        <h3>2.2 依赖图（自顶向下）</h3>
+        <div class="dep-diagram">┌──────────────────────────────────────────────────────────┐
+│                  whisper-cli (cli.cpp)                    │
+│   examples/cli/CMakeLists.txt → add_executable           │
+└───────────────────────┬──────────────────────────────────┘
+                        │ target_link_libraries
+        ┌───────────────┼─────────────────────┐
+        ▼               ▼                     ▼
+┌──────────────┐  ┌──────────────┐    ┌────────────────┐
+│  libcommon   │  │ libwhisper   │    │ libFFmpeg*     │
+│   (STATIC)   │  │  (STATIC)    │    │ AVFORMAT/CODEC │
+└──────┬───────┘  └──────┬───────┘    │ UTIL/SWRESAMP. │
+       │                 │            └────────────────┘
+       │                 │
+       │                 ▼
+       │         ┌──────────────┐
+       │         │   libggml    │
+       │         │  CPU/CUDA/   │
+       │         │ Metal/Vulkan │
+       │         └──────────────┘
+       │
+       ├─ common.h/cpp          (JSON、字符串、控制台颜色)
+       ├─ common-ggml.h/cpp     (量化辅助)
+       ├─ common-whisper.h/cpp  (音频读取 read_audio_data)
+       ├─ grammar-parser.h/cpp  (GBNF 语法解析)
+       └─ [FFmpeg] ffmpeg-transcode.cpp (音频解码，可选)
+</div>
+
+        <h3>2.3 头文件依赖明细</h3>
+        <table>
+            <thead>
+                <tr><th>头文件</th><th>来源</th><th>作用</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>common.h</code></td>
+                    <td>examples/common.h</td>
+                    <td><code>is_file_exist</code>、<code>k_colors</code>/<code>k_styles</code> 控制台着色、JSON 解析</td>
+                </tr>
+                <tr>
+                    <td><code>common-whisper.h</code></td>
+                    <td>examples/common-whisper.h</td>
+                    <td><code>read_audio_data</code>、<code>to_timestamp</code>、<code>timestamp_to_sample</code>、<code>utf8_trailing_bytes_needed</code></td>
+                </tr>
+                <tr>
+                    <td><code>whisper.h</code></td>
+                    <td>include/whisper.h</td>
+                    <td>主 C API：<code>whisper_init_from_file_with_params</code>、<code>whisper_full_parallel</code>、<code>whisper_full_n_segments</code> 等</td>
+                </tr>
+                <tr>
+                    <td><code>grammar-parser.h</code></td>
+                    <td>examples/grammar-parser.h</td>
+                    <td>GBNF 语法解析，<code>grammar_parser::parse</code>、<code>print_grammar</code></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>2.4 第三方依赖（条件编译）</h3>
+        <div class="callout info">
+            <div class="callout-title">ℹ️ FFmpeg（可选）</div>
+            <p>由顶层 CMake 选项 <code>WHISPER_COMMON_FFMPEG</code> 控制。若启用，<code>common</code> 库会编译 <code>ffmpeg-transcode.cpp</code> 并链接 <code>avformat/avcodec/avutil/swresample</code>，从而支持 mp3、ogg、flac 等压缩格式。否则 <code>read_audio_data</code> 仅处理 wav（通过内置的 dr_wav 解码）。</p>
+        </div>
+
+        <div class="callout note">
+            <div class="callout-title">🧵 线程库</div>
+            <p><code>CMAKE_THREAD_LIBS_INIT</code>（pthread on Unix、Win32 threads on Windows）由 examples/CMakeLists.txt 的 <code>find_package(Threads REQUIRED)</code> 提供，用于 <code>std::thread::hardware_concurrency()</code> 与多线程推理。</p>
+        </div>
+
+        <h3>2.5 构建产物位置</h3>
+        <pre><code>build/bin/whisper-cli          # 可执行文件
+build/lib/libcommon.a          # 静态库（含音频解码与公共工具）
+build/lib/libwhisper.a         # whisper 核心静态库
+build/lib/libggml*.a           # ggml 计算后端库</code></pre>
+    </section>
+
+    <!-- ============== 3. FLOW ============== -->
+    <section id="flow">
+        <h2><span class="icon">③</span>执行流程总览</h2>
+
+        <p><code>main()</code> 函数（约 962 行起）将整个程序拆分为 7 个阶段，下图展示了完整的数据流：</p>
+
+        <div class="flow">
+            <div class="flow-step">
+                <span class="step-num">1</span>
+                <div class="step-title">启动与环境初始化</div>
+                <div class="step-desc"><code>ggml_backend_load_all()</code> 动态加载所有可用的 ggml 后端（CPU/CUDA/Metal/Vulkan…）；Windows 上设置 UTF-8 控制台代码页。</div>
+            </div>
+            <div class="flow-step">
+                <span class="step-num">2</span>
+                <div class="step-title">命令行参数解析</div>
+                <div class="step-desc">支持 <code>@file</code> 响应文件语法；从 <code>argv</code> 构建 <code>whisper_params</code>；不存在的输入文件会被剔除。</div>
+            </div>
+            <div class="flow-step">
+                <span class="step-num">3</span>
+                <div class="step-title">模型上下文创建</div>
+                <div class="step-desc">调用 <code>whisper_init_from_file_with_params</code> 加载 GGUF 模型；可选地 <code>whisper_ctx_init_openvino_encoder</code> 初始化 OpenVINO 编码器；解析 GBNF 语法（若提供）。</div>
+            </div>
+            <div class="flow-step">
+                <span class="step-num">4</span>
+                <div class="step-title">音频解码（per file）</div>
+                <div class="step-desc"><code>read_audio_data</code> 将 wav/flac/mp3 解码为 <strong>16 kHz 单声道/双声道 float32 PCM</strong>，即 <code>WHISPER_SAMPLE_RATE</code>。</div>
+            </div>
+            <div class="flow-step">
+                <span class="step-num">5</span>
+                <div class="step-title">构建 <code>whisper_full_params</code></div>
+                <div class="step-desc">从 <code>whisper_params</code> 映射 30+ 个推理参数；自动选择 greedy 或 beam search 策略；挂载 progress / segment / abort 三类回调。</div>
+            </div>
+            <div class="flow-step">
+                <span class="step-num">6</span>
+                <div class="step-title">调用 <code>whisper_full_parallel</code></div>
+                <div class="step-desc">核心推理入口，内部完成 Mel 频谱 → 编码器 → 解码器 → 采样 → 分段；每生成一个 segment 会触发 <code>new_segment_callback</code>。</div>
+            </div>
+            <div class="flow-step">
+                <span class="step-num">7</span>
+                <div class="step-title">多格式输出</div>
+                <div class="step-desc">通过宏 <code>output_ext()</code> / <code>output_func()</code> 一键分发到 8 个输出器（txt/vtt/srt/wts/csv/json/lrc/score）；最后打印 timing 统计并释放 <code>ctx</code>。</div>
+            </div>
+        </div>
+
+        <div class="callout success">
+            <div class="callout-title">✅ 数据流图（文字版）</div>
+            <p>音频文件 → <code>read_audio_data</code> → <code>vector&lt;float&gt; pcmf32</code> → <code>whisper_full_parallel</code> → <code>whisper_context</code>（内存中的 segments/tokens）→ <code>whisper_full_get_segment_*</code> → 文件输出 / 控制台打印。</p>
+        </div>
+    </section>
+
+    <!-- ============== 4. PARAMS ============== -->
+    <section id="params">
+        <h2><span class="icon">④</span>命令行参数结构体 <code>whisper_params</code></h2>
+
+        <p>从 <a href="../examples/cli/cli.cpp#L34-L115">cli.cpp:34-115</a> 可以看到，本结构体聚合了 <strong>80+ 字段</strong>，按功能可划分为 7 组：</p>
+
+        <h3>4.1 性能与并行参数</h3>
+        <table class="param-table">
+            <thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td><code>n_threads</code></td><td>min(4, 硬件并发数)</td><td>CPU 推理线程数</td></tr>
+                <tr><td><code>n_processors</code></td><td>1</td><td>并行处理实例数（whisper_full_parallel 的并行度）</td></tr>
+                <tr><td><code>use_gpu</code></td><td>true</td><td>是否启用 GPU 推理</td></tr>
+                <tr><td><code>gpu_device</code></td><td>0</td><td>GPU 设备 ID，可被环境变量 <code>WHISPER_ARG_DEVICE</code> 覆盖</td></tr>
+                <tr><td><code>flash_attn</code></td><td>true</td><td>启用 Flash Attention（降低显存/加速）</td></tr>
+            </tbody>
+        </table>
+
+        <h3>4.2 采样与解码策略</h3>
+        <table class="param-table">
+            <thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td><code>strategy</code></td><td>由 <code>beam_size</code> 推断</td><td><code>WHISPER_SAMPLING_GREEDY</code> 或 <code>WHISPER_SAMPLING_BEAM_SEARCH</code></td></tr>
+                <tr><td><code>best_of</code></td><td>5</td><td>greedy 模式下保留的候选数</td></tr>
+                <tr><td><code>beam_size</code></td><td>5</td><td>beam search 的 beam 宽度</td></tr>
+                <tr><td><code>temperature</code></td><td>0.0</td><td>采样温度；0 = 贪婪解码</td></tr>
+                <tr><td><code>temperature_inc</code></td><td>0.2</td><td>失败时温度递增步长（<code>no_fallback</code> 时禁用）</td></tr>
+                <tr><td><code>entropy_thold</code></td><td>2.40</td><td>解码失败的熵阈值</td></tr>
+                <tr><td><code>logprob_thold</code></td><td>-1.00</td><td>解码失败的对数概率阈值</td></tr>
+                <tr><td><code>no_speech_thold</code></td><td>0.6</td><td>无语音段判定阈值</td></tr>
+                <tr><td><code>word_thold</code></td><td>0.01</td><td>词级时间戳概率阈值</td></tr>
+                <tr><td><code>grammar_penalty</code></td><td>100.0</td><td>语法约束外的 token 惩罚权重</td></tr>
+            </tbody>
+        </table>
+
+        <h3>4.3 任务与语言</h3>
+        <table class="param-table">
+            <thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td><code>language</code></td><td>"en"</td><td>源语言，<code>"auto"</code> 表示自动检测</td></tr>
+                <tr><td><code>translate</code></td><td>false</td><td>是否翻译为英文（仅多语种模型可用）</td></tr>
+                <tr><td><code>detect_language</code></td><td>false</td><td>只检测语言后退出</td></tr>
+                <tr><td><code>prompt</code></td><td>""</td><td>初始提示词（热词/风格引导）</td></tr>
+                <tr><td><code>carry_initial_prompt</code></td><td>false</td><td>每个分段都前置 prompt</td></tr>
+                <tr><td><code>suppress_nst</code></td><td>false</td><td>抑制非语音 token</td></tr>
+                <tr><td><code>suppress_regex</code></td><td>""</td><td>用正则屏蔽特定 token</td></tr>
+            </tbody>
+        </table>
+
+        <h3>4.4 时间与分段控制</h3>
+        <table class="param-table">
+            <thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td><code>offset_t_ms</code></td><td>0</td><td>音频起始偏移（毫秒）</td></tr>
+                <tr><td><code>duration_ms</code></td><td>0</td><td>处理时长（0 表示全部）</td></tr>
+                <tr><td><code>offset_n</code></td><td>0</td><td>segment 编号偏移（SRT 续编号）</td></tr>
+                <tr><td><code>max_context</code></td><td>-1</td><td>最大文本上下文 token 数</td></tr>
+                <tr><td><code>max_len</code></td><td>0</td><td>单段最大字符数</td></tr>
+                <tr><td><code>audio_ctx</code></td><td>0</td><td>音频上下文帧数（0=全部）</td></tr>
+                <tr><td><code>split_on_word</code></td><td>false</td><td>在词边界而非 token 边界切分</td></tr>
+            </tbody>
+        </table>
+
+        <h3>4.5 输出格式开关</h3>
+        <p>共 8 个布尔开关 + 1 个输出文件名前缀，<code>whisper_params_parse</code> 解析后由主循环统一遍历：</p>
+        <pre><code><span class="type">bool</span> output_txt, output_vtt, output_srt, output_wts,
+     output_csv, output_jsn, output_jsn_full, output_lrc;
+<span class="type">bool</span> log_score;       <span class="comment">// 输出 token 概率</span>
+<span class="type">std::string</span> fname_out;  <span class="comment">// 输出文件名前缀（不含扩展名）</span></code></pre>
+
+        <h3>4.6 高级特性</h3>
+        <table class="param-table">
+            <thead><tr><th>字段</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td><code>diarize</code> / <code>tinydiarize</code></td><td>立体声能量分离 / TDRZ 模型说话人切换检测（互斥）</td></tr>
+                <tr><td><code>debug_mode</code></td><td>导出 log_mel 等中间结果</td></tr>
+                <tr><td><code>dtw</code></td><td>DTW token 级对齐，可选 tiny/base/small/medium/large v1~v3</td></tr>
+                <tr><td><code>grammar</code> + <code>grammar_rule</code></td><td>GBNF 语法约束解码（结构化输出）</td></tr>
+                <tr><td><code>vad</code> + <code>vad_*</code></td><td>语音活动检测（silero-vad 等）的 6 个子参数</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- ============== 5. PARSE ============== -->
+    <section id="parse">
+        <h2><span class="icon">⑤</span>参数解析函数 <code>whisper_params_parse</code></h2>
+
+        <h3>5.1 设计模式：链式 <code>else if</code></h3>
+        <p>从 <a href="../examples/cli/cli.cpp#L132-L232">cli.cpp:132-232</a> 可以看到，本函数采用典型的「命令式」参数解析：</p>
+
+<pre><code><span class="type">for</span> (<span class="type">int</span> i = 1; i &lt; argc; i++) {
+    <span class="type">std::string</span> arg = argv[i];
+
+    <span class="comment">// 1. "-" 或 "-" 开头的非选项 → 当作输入文件</span>
+    <span class="keyword">if</span> (arg == <span class="string">"-"</span>)              { params.fname_inp.push_back(arg); <span class="keyword">continue</span>; }
+    <span class="keyword">if</span> (arg[0] != <span class="string">'-'</span>)           { params.fname_inp.push_back(arg); <span class="keyword">continue</span>; }
+
+    <span class="comment">// 2. 短/长选项映射到同一个字段</span>
+    <span class="keyword">else if</span> (arg == <span class="string">"-t"</span>    || arg == <span class="string">"--threads"</span>)   { params.n_threads = std::stoi(ARGV_NEXT); }
+    <span class="keyword">else if</span> (arg == <span class="string">"-bs"</span>   || arg == <span class="string">"--beam-size"</span>) { params.beam_size = std::stoi(ARGV_NEXT); }
+    ...
+    <span class="comment">// 3. 未知选项 → 打印 usage 并退出</span>
+    <span class="keyword">else</span> { fprintf(stderr, <span class="string">"error: unknown argument: %s\n"</span>, arg.c_str()); ... }
+}</code></pre>
+
+        <h3>5.2 关键技术点</h3>
+
+        <h4>① ARGV_NEXT 宏（<a href="../examples/cli/cli.cpp#L158">cli.cpp:158</a>）</h4>
+<pre><code><span class="keyword">#define</span> ARGV_NEXT (((i + 1) &lt; argc) ? argv[++i] : requires_value_error(arg))</code></pre>
+        <p>既取下一个参数，又在缺失值时优雅报错（<code>requires_value_error</code> 直接 <code>exit(0)</code>）。</p>
+
+        <h4>② 响应文件语法 <code>@file</code>（<a href="../examples/cli/cli.cpp#L978-L1002">cli.cpp:978-1002</a>）</h4>
+        <p>当 argv[1] 是 <code>@filename</code> 时，整个文件被逐行展开为 argv，方便调用方预先准备超长命令行。</p>
+
+        <h4>③ 环境变量覆盖（<a href="../examples/cli/cli.cpp#L133-L135">cli.cpp:133-135</a>）</h4>
+<pre><code><span class="keyword">if</span> (<span class="type">const char</span> * env_device = std::getenv(<span class="string">"WHISPER_ARG_DEVICE"</span>)) {
+    params.gpu_device = std::stoi(env_device);
+}</code></pre>
+        <p>通过环境变量隐藏部署时的设备选择。</p>
+
+        <h4>④ 短选项缩写表</h4>
+        <p>为了减少键入，CLI 提供两套命名：例如 <code>-t / --threads</code>、<code>-bs / --beam-size</code>、<code>-vt / --vad-threshold</code> 等。单字母全部小写、<strong>短横线开头</strong>；长选项以 <code>--</code> 开头且更具语义。</p>
+
+        <h3>5.3 <code>whisper_print_usage</code></h3>
+        <p>从 <a href="../examples/cli/cli.cpp#L234-L311">cli.cpp:234-311</a> 的实现可以看出，usage 函数采取「格式化字符串逐行打印」的方式：</p>
+
+<pre><code><span class="func">fprintf</span>(stderr, <span class="string">"  -t N,      --threads N            [%-7d] number of threads ...\n"</span>,
+        params.n_threads);</code></pre>
+        <p><code>%-7d</code> 保证默认值左对齐且占 7 字符宽度，让帮助信息整齐美观。</p>
+    </section>
+
+    <!-- ============== 6. CALLBACKS ============== -->
+    <section id="callbacks">
+        <h2><span class="icon">⑥</span>回调函数设计</h2>
+
+        <p>whisper C API 通过 4 类回调暴露内部状态，cli.cpp 实现了其中 3 类，是学习「事件驱动」调用风格的范例。</p>
+
+        <h3>6.1 <code>whisper_print_progress_callback</code>（<a href="../examples/cli/cli.cpp#L353-L360">cli.cpp:353</a>）</h3>
+<pre><code><span class="type">static void</span> <span class="func">whisper_print_progress_callback</span>(
+    <span class="type">struct whisper_context</span> * ctx, <span class="type">struct whisper_state</span> * state,
+    <span class="type">int</span> progress, <span class="type">void</span> * user_data) {
+    <span class="comment">// 步进式打印，每 progress_step% 输出一次</span>
+    <span class="keyword">if</span> (progress &gt;= *progress_prev + progress_step) {
+        *progress_prev += progress_step;
+        <span class="func">fprintf</span>(stderr, <span class="string">"%s: progress = %3d%%\n"</span>, __func__, progress);
+    }
+}</code></pre>
+        <p>通过 <code>whisper_print_user_data</code> 结构体回传参数上下文，避免使用全局变量。</p>
+
+        <h3>6.2 <code>whisper_print_segment_callback</code>（<a href="../examples/cli/cli.cpp#L362-L453">cli.cpp:362</a>）</h3>
+        <p>这是最长也是最有意思的回调 —— 每当解码器输出一个 segment 时调用。三种呈现模式：</p>
+
+        <table>
+            <thead><tr><th>模式</th><th>触发条件</th><th>效果</th></tr></thead>
+            <tbody>
+                <tr><td><strong>普通文本</strong></td><td>默认</td><td>直接 <code>printf</code> 整段文本</td></tr>
+                <tr><td><strong>置信度着色</strong></td><td><code>--print-colors</code></td><td>依据 <code>whisper_full_get_token_p</code> 计算 token 颜色（Paul Tol 色盲友好色板）</td></tr>
+                <tr><td><strong>置信度样式</strong></td><td><code>--print-confidence</code></td><td>三档 ANSI 样式：高=暗、中=下划线、低=反色</td></tr>
+            </tbody>
+        </table>
+
+        <div class="callout note">
+            <div class="callout-title">🎨 k_colors 设计要点</div>
+            <p><code>k_colors</code>（<a href="../examples/common.h#L287-L295">common.h:287-295</a>）是 7 段渐变色（红→黄→绿），通过对 <code>p</code>（token 概率）做 <code>pow(p, 3)</code> 映射到 0~6 区间，颜色越绿表示模型越确信。</p>
+        </div>
+
+        <h3>6.3 <code>encoder_begin_callback</code> 与 <code>abort_callback</code>（<a href="../examples/cli/cli.cpp#L1311-L1330">cli.cpp:1311-1330</a>）</h3>
+        <p>两个回调均用于外部中止推理：</p>
+
+<pre><code><span class="comment">// 每次编码器运行前触发；返回 false 中止</span>
+wparams.encoder_begin_callback = [](<span class="type">whisper_context</span>* ctx, <span class="type">whisper_state</span>* state, <span class="type">void</span>* ud) -&gt; <span class="type">bool</span> {
+    <span class="type">bool</span> is_aborted = *(<span class="type">bool</span>*)ud;
+    <span class="keyword">return</span> !is_aborted;
+};
+
+<span class="comment">// 每次计算块前触发；返回 true 中止</span>
+wparams.abort_callback = [](<span class="type">void</span>* ud) -&gt; <span class="type">bool</span> {
+    <span class="type">bool</span> is_aborted = *(<span class="type">bool</span>*)ud;
+    <span class="keyword">return</span> is_aborted;
+};</code></pre>
+
+        <p>当前实现中 <code>is_aborted</code> 始终为 <code>false</code>，但保留了接入 GUI / 命令行 Ctrl-C 处理的标准插槽。</p>
+    </section>
+
+    <!-- ============== 7. OUTPUTS ============== -->
+    <section id="outputs">
+        <h2><span class="icon">⑦</span>多格式输出实现</h2>
+
+        <p>cli.cpp 在 <strong>第 455–957 行</strong>实现了 8 种输出格式。下面按复杂度递增排列：</p>
+
+        <h3>7.1 文本类（TXT / VTT / SRT / LRC）</h3>
+        <table>
+            <thead><tr><th>函数</th><th>行号</th><th>用途</th><th>关键点</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><code>output_txt</code></td>
+                    <td><a href="../examples/cli/cli.cpp#L455">cli.cpp:455</a></td>
+                    <td>纯文本，逐段一行</td>
+                    <td>无时间戳</td>
+                </tr>
+                <tr>
+                    <td><code>output_vtt</code></td>
+                    <td><a href="../examples/cli/cli.cpp#L472">cli.cpp:472</a></td>
+                    <td>WebVTT 字幕</td>
+                    <td>开头 <code>WEBVTT</code>，diarize 时插入 <code>&lt;v SpeakerX&gt;</code></td>
+                </tr>
+                <tr>
+                    <td><code>output_srt</code></td>
+                    <td><a href="../examples/cli/cli.cpp#L494">cli.cpp:494</a></td>
+                    <td>SubRip 字幕</td>
+                    <td>段号从 <code>i+1+offset_n</code> 开始，支持续编号</td>
+                </tr>
+                <tr>
+                    <td><code>output_lrc</code></td>
+                    <td><a href="../examples/cli/cli.cpp#L929">cli.cpp:929</a></td>
+                    <td>LRC 歌词</td>
+                    <td>时间戳精确到 10ms（<code>msec/10</code>）</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>7.2 结构化数据（CSV / JSON / Score）</h3>
+
+        <h4>CSV（<a href="../examples/cli/cli.cpp#L576">cli.cpp:576</a>）</h4>
+        <p>遵循 RFC 4180：双引号用双引号转义。函数 <code>escape_double_quotes_in_csv</code> 实现该转义逻辑。</p>
+
+        <h4>JSON / JSON-Full（<a href="../examples/cli/cli.cpp#L616">cli.cpp:616</a>）</h4>
+        <p>这是 <strong>最长</strong>的输出函数（约 187 行），采用 Lambda 嵌套实现手写缩进：</p>
+
+<pre><code><span class="type">auto</span> doindent = [&amp;]()           { <span class="keyword">for</span> (<span class="type">int</span> i = 0; i &lt; indent; i++) fout &lt;&lt; <span class="string">"\t"</span>; };
+<span class="type">auto</span> start_obj = [&amp;](<span class="type">const char</span>* name) { ... };
+<span class="type">auto</span> value_s   = [&amp;](<span class="type">const char</span>* name, <span class="type">const char</span>* val, <span class="type">bool</span> end) { ... };</code></pre>
+
+        <p><code>output_jsn_full</code> 还做了 <strong>UTF-8 token 合并</strong>（修复 issue #1798）：</p>
+
+<pre><code><span class="comment">// CJK 多字节字符可能被切到多个 token，需合并到完整 UTF-8 码点</span>
+<span class="keyword">while</span> (j &lt; n &amp;&amp; <span class="func">utf8_trailing_bytes_needed</span>(m.text) &gt; 0) {
+    <span class="type">auto</span> tok_next = <span class="func">whisper_full_get_token_data</span>(ctx, i, j);
+    m.text += <span class="func">whisper_token_to_str</span>(ctx, tok_next.id);
+    ...
+}</code></pre>
+
+        <h4>Score（<a href="../examples/cli/cli.cpp#L601">cli.cpp:601</a>）</h4>
+        <p>逐 token 输出 <code>text \t probability</code>，用于离线分析模型置信度分布。</p>
+
+        <h3>7.3 卡拉 OK 视频脚本（<a href="../examples/cli/cli.cpp#L808">cli.cpp:808</a>）</h3>
+        <p><code>output_wts</code> 生成一个 <strong>bash 脚本</strong>，调用 <code>ffmpeg</code> 的 <code>drawtext</code> 滤镜制作卡拉 OK 视频：</p>
+
+<pre><code><span class="func">fout</span> &lt;&lt; <span class="string">"ffmpeg -i "</span> &lt;&lt; fname_inp
+     &lt;&lt; <span class="string">" -f lavfi -i color=size=1200x120:duration="</span> &lt;&lt; t_sec
+     &lt;&lt; <span class="string">":rate=25:color=black -vf \""</span>;
+
+<span class="comment">// 为每个 token 生成三组 drawtext：</span>
+<span class="comment">//   1. drawtext=...:enable='between(t,T0,T1)'      // 灰色背景</span>
+<span class="comment">//   2. drawtext=...:enable='between(t,tok_t0,tok_t1)'  // 绿色高亮</span>
+<span class="comment">//   3. drawtext=...:enable='between(t,tok_t0,tok_t1)'  // 绿色下划线</span></code></pre>
+
+        <p>因此最终视频会出现「逐字高亮」的卡拉 OK 效果。</p>
+
+        <h3>7.4 输出分发的「宏技巧」（<a href="../examples/cli/cli.cpp#L1341-L1356">cli.cpp:1341-1356</a>）</h3>
+<pre><code><span class="keyword">#define</span> output_func(func, ext, param, ...) <span class="keyword">if</span> (param &amp;&amp; fout_factory.open(ext, #func)) {\
+    func(ctx, fout_factory.fout, params, __VA_ARGS__); \
+}
+<span class="keyword">#define</span> output_ext(ext, ...) output_func(output_##ext, <span class="string">"."</span> #ext, params.output_##ext, __VA_ARGS__)
+
+output_ext(txt, pcmf32s);
+output_ext(vtt, pcmf32s);
+output_ext(srt, pcmf32s);
+output_ext(wts, pcmf32s, fname_inp.c_str(), float(pcmf32.size() + 1000)/WHISPER_SAMPLE_RATE, fout_factory.fname_out.c_str());
+output_ext(csv, pcmf32s);
+output_func(output_json, <span class="string">".json"</span>, params.output_jsn, pcmf32s);
+output_ext(lrc, pcmf32s);
+output_func(output_score, <span class="string">".score.txt"</span>, params.log_score, pcmf32s);</code></pre>
+        <p>利用 token 拼接 <code>output_##ext</code> 把函数名重构出来，避免 8 个 <code>if</code> 重复书写；同时通过 <code>__VA_ARGS__</code> 透传差异化的额外参数（wts 需要音频时长）。</p>
+
+        <h3>7.5 <code>fout_factory</code> 内嵌结构体（<a href="../examples/cli/cli.cpp#L1120-L1167">cli.cpp:1120-1167</a>）</h3>
+        <p>这是非常优雅的 RAII 设计：</p>
+        <ul>
+            <li>初始化时确定输出文件基名（<code>fname_out_</code> 或 <code>fname_inp</code>）。</li>
+            <li><code>is_stdout</code>（基名为 <code>-</code>）时输出到 <code>/dev/stdout</code>（Windows 下 <code>CON</code>）。</li>
+            <li>每次 <code>open(ext, name)</code> 会重置文件名为 <code>basename + ext</code>。</li>
+            <li>多个输出格式（如 <code>.txt</code> + <code>.srt</code>）会写入同一基名的不同扩展名文件。</li>
+        </ul>
+    </section>
+
+    <!-- ============== 8. MAIN ============== -->
+    <section id="main">
+        <h2><span class="icon">⑧</span>主函数 <code>main()</code> 详解</h2>
+
+        <p>整个 <code>main()</code> 函数（约 408 行）按职责可拆为 6 个子阶段：</p>
+
+        <h3>8.1 启动（<a href="../examples/cli/cli.cpp#L962-L1010">cli.cpp:962-1010</a>）</h3>
+<pre><code><span class="type">int</span> <span class="func">main</span>(<span class="type">int</span> argc, <span class="type">char</span> ** argv) {
+    <span class="func">ggml_backend_load_all</span>();      <span class="comment">// 加载所有 ggml 后端</span>
+
+<span class="preprocessor">#if</span> defined(_WIN32)
+    <span class="func">SetConsoleOutputCP</span>(CP_UTF8); <span class="comment">// Windows UTF-8 控制台</span>
+<span class="preprocessor">#endif</span>
+
+    whisper_params params;
+
+    <span class="comment">// @file 响应文件展开</span>
+    <span class="keyword">if</span> (argc == 2 &amp;&amp; argv[1][0] == <span class="string">'@'</span>) { ... }
+
+    <span class="keyword">if</span> (!<span class="func">whisper_params_parse</span>(argc, argv, params)) { ... }
+
+    <span class="comment">// 剔除不存在的输入文件</span>
+    <span class="keyword">for</span> (<span class="type">auto</span> it = ...) { <span class="keyword">if</span> (!<span class="func">is_file_exist</span>(fname_inp)) it = params.fname_inp.erase(it); }
+
+    <span class="keyword">if</span> (params.fname_inp.empty()) { <span class="comment">/* 报错退出 */</span> }
+    <span class="keyword">if</span> (params.language != <span class="string">"auto"</span> &amp;&amp; <span class="func">whisper_lang_id</span>(params.language.c_str()) == -1) { <span class="comment">/* 未知语言 */</span> }
+    <span class="keyword">if</span> (params.diarize &amp;&amp; params.tinydiarize) { <span class="comment">/* 互斥 */</span> }
+}</code></pre>
+
+        <h3>8.2 上下文创建（<a href="../examples/cli/cli.cpp#L1049-L1115">cli.cpp:1049-1115</a>）</h3>
+
+        <div class="callout info">
+            <div class="callout-title">🔧 上下文参数 <code>whisper_context_params</code></div>
+            <p>三个核心开关：<code>use_gpu</code>、<code>gpu_device</code>、<code>flash_attn</code>，由命令行参数透传。</p>
+        </div>
+
+        <p>DTW 时间戳模式通过 <code>-dtw MODEL</code> 选择预训练的 aheads 权重，对应常量 <code>WHISPER_AHEADS_TINY/BASE/SMALL/MEDIUM/LARGE_Vx</code>。</p>
+
+        <div class="callout warning">
+            <div class="callout-title">⚠️ GGUF vs ONNX 的差异</div>
+            <p>源码注释（<a href="../examples/cli/cli.cpp#L1080-L1082">cli.cpp:1080-1082</a>）指出：</p>
+            <blockquote>「gguf 模型文件只包含参数，不包含模型结构，加载过程依赖转换脚本的约定。这有别于 ONNX Runtime 等同时包含结构和参数的推理框架。」</blockquote>
+        </div>
+
+        <h3>8.3 遍历输入文件（<a href="../examples/cli/cli.cpp#L1117-L1182">cli.cpp:1117-1182</a>）</h3>
+        <p>外层 for 循环遍历 <code>params.fname_inp</code>，每个文件独立：</p>
+        <ol>
+            <li>创建 <code>fout_factory</code>（用于该文件的输出流管理）</li>
+            <li>调用 <code>read_audio_data</code> 读取 PCM：单声道 → <code>pcmf32</code>；立体声 → <code>pcmf32s</code></li>
+            <li>多语种检查（<code>whisper_is_multilingual</code>）</li>
+            <li>打印系统信息（线程数、beam 大小、任务类型等）</li>
+        </ol>
+
+        <h3>8.4 推理参数装配（<a href="../examples/cli/cli.cpp#L1219-L1335">cli.cpp:1219-1335</a>）</h3>
+
+<pre><code><span class="comment">// 核心：策略自动选择</span>
+<span class="type">const bool</span> use_grammar = (!params.grammar_parsed.rules.empty() &amp;&amp; !params.grammar_rule.empty());
+wparams.strategy = (params.beam_size &gt; 1 || use_grammar)
+                   ? WHISPER_SAMPLING_BEAM_SEARCH
+                   : WHISPER_SAMPLING_GREEDY;
+
+<span class="comment">// 字段映射（节选）</span>
+wparams.translate        = params.translate;
+wparams.language         = params.language.c_str();
+wparams.n_threads        = params.n_threads;
+wparams.n_max_text_ctx   = params.max_context &gt;= 0 ? params.max_context : wparams.n_max_text_ctx;
+wparams.greedy.best_of        = params.best_of;
+wparams.beam_search.beam_size = params.beam_size;
+wparams.tdrz_enable      = params.tinydiarize;
+wparams.vad              = params.vad;
+wparams.vad_model_path   = params.vad_model.c_str();
+wparams.vad_params.threshold = params.vad_threshold;
+...</code></pre>
+
+        <div class="callout note">
+            <div class="callout-title">🧠 Greedy vs Beam Search 抉择</div>
+            <p>源码注释（<a href="../examples/cli/cli.cpp#L1221-L1223">cli.cpp:1221-1223</a>）：</p>
+            <blockquote>「greedy search：每次选择概率最高的下一个 token，速度快但可能错过更优解。beam search：保留多个候选序列，考虑更多可能性，通常效果更好但计算量大。」</blockquote>
+            <p>CLI 默认 <code>beam_size=5</code>，因此默认走 beam search；只有显式 <code>--beam-size 1</code> 时才退化到 greedy。</p>
+        </div>
+
+        <h3>8.5 推理入口（<a href="../examples/cli/cli.cpp#L1332">cli.cpp:1332</a>）</h3>
+<pre><code><span class="keyword">if</span> (<span class="func">whisper_full_parallel</span>(ctx, wparams, pcmf32.data(), pcmf32.size(), params.n_processors) != 0) {
+    <span class="func">fprintf</span>(stderr, <span class="string">"%s: failed to process audio\n"</span>, argv[0]);
+    <span class="keyword">return</span> 10;
+}</code></pre>
+        <p>这是整个程序的「心脏」。返回值非 0 即报错退出。</p>
+
+        <h3>8.6 输出与清理（<a href="../examples/cli/cli.cpp#L1338-L1369">cli.cpp:1338-1369</a>）</h3>
+        <p>通过宏一次性触发 8 种输出；最后打印耗时统计并释放模型上下文：</p>
+<pre><code><span class="keyword">if</span> (!params.no_prints) <span class="func">whisper_print_timings</span>(ctx);
+<span class="func">whisper_free</span>(ctx);
+<span class="keyword">return</span> 0;</code></pre>
+    </section>
+
+    <!-- ============== 9. KEY API ============== -->
+    <section id="keyapi">
+        <h2><span class="icon">⑨</span>核心 API 调用清单</h2>
+
+        <p>cli.cpp 对 <code>whisper.h</code> 的调用覆盖了 35+ 个公开函数。下表按调用阶段整理：</p>
+
+        <h3>9.1 生命周期</h3>
+        <table>
+            <thead><tr><th>API</th><th>作用</th><th>行号</th></tr></thead>
+            <tbody>
+                <tr><td><code>whisper_version</code></td><td>打印版本</td><td><a href="../examples/cli/cli.cpp#L155">cli.cpp:155</a></td></tr>
+                <tr><td><code>whisper_context_default_params</code></td><td>取上下文参数默认值</td><td><a href="../examples/cli/cli.cpp#L1050">cli.cpp:1050</a></td></tr>
+                <tr><td><code>whisper_init_from_file_with_params</code></td><td>加载 GGUF 模型</td><td><a href="../examples/cli/cli.cpp#L1083">cli.cpp:1083</a></td></tr>
+                <tr><td><code>whisper_ctx_init_openvino_encoder</code></td><td>初始化 OpenVINO 编码器</td><td><a href="../examples/cli/cli.cpp#L1091">cli.cpp:1091</a></td></tr>
+                <tr><td><code>whisper_full_default_params</code></td><td>取推理参数默认值</td><td><a href="../examples/cli/cli.cpp#L1224">cli.cpp:1224</a></td></tr>
+                <tr><td><code>whisper_full_parallel</code></td><td>执行完整推理</td><td><a href="../examples/cli/cli.cpp#L1332">cli.cpp:1332</a></td></tr>
+                <tr><td><code>whisper_print_timings</code></td><td>打印耗时</td><td><a href="../examples/cli/cli.cpp#L1365">cli.cpp:1365</a></td></tr>
+                <tr><td><code>whisper_free</code></td><td>释放上下文</td><td><a href="../examples/cli/cli.cpp#L1367">cli.cpp:1367</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>9.2 结果遍历</h3>
+        <table>
+            <thead><tr><th>API</th><th>作用</th></tr></thead>
+            <tbody>
+                <tr><td><code>whisper_full_n_segments</code></td><td>片段总数</td></tr>
+                <tr><td><code>whisper_full_get_segment_t0/t1</code></td><td>片段起止时间（10ms 单位）</td></tr>
+                <tr><td><code>whisper_full_get_segment_text</code></td><td>片段文本</td></tr>
+                <tr><td><code>whisper_full_n_tokens</code></td><td>片段内 token 数</td></tr>
+                <tr><td><code>whisper_full_get_token_text/id/data/p</code></td><td>token 文本/ID/数据/概率</td></tr>
+                <tr><td><code>whisper_full_get_segment_speaker_turn_next</code></td><td>TDRZ 说话人切换</td></tr>
+                <tr><td><code>whisper_full_lang_id</code></td><td>识别得到的语言 ID</td></tr>
+            </tbody>
+        </table>
+
+        <h3>9.3 模型元数据</h3>
+        <table>
+            <thead><tr><th>API</th><th>作用</th></tr></thead>
+            <tbody>
+                <tr><td><code>whisper_model_type_readable</code></td><td>模型类型字符串（tiny/base/...）</td></tr>
+                <tr><td><code>whisper_is_multilingual</code></td><td>是否多语种</td></tr>
+                <tr><td><code>whisper_model_n_vocab/audio_ctx/audio_state/audio_head/audio_layer/text_*/mels/ftype</code></td><td>结构化元信息</td></tr>
+                <tr><td><code>whisper_token_to_str</code></td><td>token ID → 字符串</td></tr>
+                <tr><td><code>whisper_token_eot</code></td><td>End-of-Text 阈值（区分特殊 token）</td></tr>
+            </tbody>
+        </table>
+
+        <h3>9.4 语言工具</h3>
+        <table>
+            <thead><tr><th>API</th><th>作用</th></tr></thead>
+            <tbody>
+                <tr><td><code>whisper_lang_id</code></td><td>语言名 → ID（用于验证 --language 参数）</td></tr>
+                <tr><td><code>whisper_lang_str</code></td><td>ID → 语言名（JSON 输出）</td></tr>
+                <tr><td><code>whisper_print_system_info</code></td><td>系统信息（含后端）</td></tr>
+            </tbody>
+        </table>
+
+        <h3>9.5 日志</h3>
+        <table>
+            <thead><tr><th>API</th><th>作用</th></tr></thead>
+            <tbody>
+                <tr><td><code>whisper_log_set</code></td><td>注册日志回调；<code>--no-prints</code> 时注册 <code>cb_log_disable</code> 空回调</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- ============== 10. SUMMARY ============== -->
+    <section id="summary">
+        <h2><span class="icon">⑩</span>设计模式总结</h2>
+
+        <p>cli.cpp 在工程上展示了 6 个值得借鉴的设计模式：</p>
+
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-title">🏗️ 单一职责的 main</div>
+                <div class="card-body">main 函数只做「编排」，把每个步骤委托给独立函数（解析、加载、推理、输出），便于阅读和单元测试。</div>
+            </div>
+            <div class="card">
+                <div class="card-title">📦 宏分发输出</div>
+                <div class="card-body">通过 token 拼接宏 <code>output_ext</code> 把 8 种输出格式压缩到 8 行调用，新增格式仅需写一个 <code>output_xxx</code> 函数。</div>
+            </div>
+            <div class="card">
+                <div class="card-title">🎯 RAII 输出工厂</div>
+                <div class="card-body"><code>fout_factory</code> 内嵌结构体，把「单/多输出文件、stdout、扩展名拼接」封装在一个对象里。</div>
+            </div>
+            <div class="card">
+                <div class="card-title">🔌 事件驱动回调</div>
+                <div class="card-body">progress / segment / abort 三类回调让 libwhisper 与 CLI 展示层解耦，可被 GUI/服务复用。</div>
+            </div>
+            <div class="card">
+                <div class="card-title">🎨 控制台着色</div>
+                <div class="card-body">Paul Tol 色盲友好色板 + ANSI 样式，兼顾可读性与可访问性。</div>
+            </div>
+            <div class="card">
+                <div class="card-title">🌐 多语言支持</div>
+                <div class="card-body">UTF-8 token 合并修复、CJK 多字节正确处理、Windows UTF-8 控制台，跨平台细节完善。</div>
+            </div>
+        </div>
+
+        <h3>典型运行示例</h3>
+<pre><code><span class="comment"># 1. 基础转录</span>
+./build/bin/whisper-cli -m models/ggml-base.en.bin -f samples/jfk.wav
+
+<span class="comment"># 2. 多格式输出 + 颜色</span>
+./build/bin/whisper-cli -m models/ggml-base.en.bin -f input.wav \
+    --output-txt --output-srt --output-vtt --print-colors
+
+<span class="comment"># 3. 中文 + 翻译为英文</span>
+./build/bin/whisper-cli -m models/ggml-medium.bin -l zh \
+    -f chinese.wav --translate
+
+<span class="comment"># 4. VAD + 立体声 diarize</span>
+./build/bin/whisper-cli -m models/ggml-medium.bin -f meeting.wav \
+    --vad --diarize
+
+<span class="comment"># 5. JSON 全字段输出（含 token 概率与 DTW 时间戳）</span>
+./build/bin/whisper-cli -m models/ggml-medium.bin -f audio.wav \
+    --output-json-full --dtw medium</code></pre>
+
+        <h3>可作为参考的扩展点</h3>
+        <ul>
+            <li><strong>流式转录</strong>：参考 <a href="../examples/stream">examples/stream</a>，将 PCM 分块送入 <code>whisper_full_parallel</code>。</li>
+            <li><strong>HTTP 服务</strong>：参考 <a href="../examples/server">examples/server</a>，把 cli 的输出函数复用到 REST handler。</li>
+            <li><strong>Node.js 绑定</strong>：<a href="../examples/addon.node">examples/addon.node</a> 与 <a href="../bindings/javascript">bindings/javascript</a> 把同一套 API 暴露给 JS 生态。</li>
+        </ul>
+    </section>
+
+    <footer>
+        <p>📄 文档位置：<code>docs/cli-example.html</code> ｜ 源码：<a href="../examples/cli/cli.cpp">examples/cli/cli.cpp</a></p>
+        <p>whisper.cpp · CLI 示例程序深度解析 · 1370 行代码的完整解剖</p>
+    </footer>
+
+</div>
+</body>
+</html>

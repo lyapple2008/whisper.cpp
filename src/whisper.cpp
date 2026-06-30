@@ -3197,6 +3197,7 @@ static bool log_mel_spectrogram(
     // pad 30 seconds of zeros at the end of audio (480,000 samples) + reflective pad 200 samples at the end of audio
     std::fill(samples_padded.begin() + n_samples + stage_2_pad, samples_padded.begin() + n_samples + stage_1_pad + 2 * stage_2_pad, 0);
 
+    // mars-todo: 这里的反射填充是做什么用的？为什么不是直接补0？
     // reflective pad 200 samples at the beginning of audio
     std::reverse_copy(samples + 1, samples + 1 + stage_2_pad, samples_padded.begin());
 
@@ -3720,6 +3721,8 @@ struct whisper_context * whisper_init_with_params_no_state(struct whisper_model_
     whisper_context * ctx = new whisper_context;
     ctx->params = params;
 
+    // 解决whisper_model_load可能抛异常，但是whisper_init_with_params_no_state是c函数接口不支持异常的问题，
+    // 异常就地捕获，变成model_loaded变量状态
     // A C++ exception escaping this extern "C" function aborts non-C++ callers
     // (Rust via whisper-rs, Go via cgo, ...). whisper_model_load can throw
     // (std::runtime_error here; vk::SystemError from the Vulkan backend during
@@ -7785,6 +7788,7 @@ int whisper_full(
 
     std::vector<float> vad_samples;
     if (params.vad) {
+        // mars-todo: 这里的VAD是哪里实现的？whisper模型本身有提供VAD吗？
         WHISPER_LOG_INFO("%s: VAD is enabled, processing speech segments only\n", __func__);
         if (!whisper_vad(ctx, ctx->state, params, samples, n_samples, vad_samples)) {
             WHISPER_LOG_ERROR("%s: failed to compute VAD\n", __func__);
