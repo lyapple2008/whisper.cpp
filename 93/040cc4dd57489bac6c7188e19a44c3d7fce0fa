@@ -1,0 +1,47 @@
+docs/log-mel-spectrogram.html
+  s_be25d4d7f453c1::t_c85eeebb6342fb 1273
+  s_be25d4d7f453c1::t_330787fbc01e28 483-656,658
+  s_be25d4d7f453c1::t_b3a933ff0eef92 703
+  s_be25d4d7f453c1::t_fda922f47955c7 949-950,953,962-963,967,969,973-976,992-996,1004-1061,1063-1081
+  s_be25d4d7f453c1::t_b21ddf2fa3b28c 707
+  s_be25d4d7f453c1::t_50e910a00d93ea 776
+  s_be25d4d7f453c1::t_73f38c41300833 395
+  s_be25d4d7f453c1::t_42538151cc8698 691
+  s_be25d4d7f453c1::t_5d8a02c26d1df1 697
+  s_be25d4d7f453c1::t_32bca676ba99cc 173
+  s_be25d4d7f453c1::t_0c14413d16662b 747
+  s_be25d4d7f453c1::t_725def3feb2156 1-61,63-172,174-322,360-381,383-394,396-482,657,659-690,692-696,698-702,704-706,708-712,714-725,727-746,748-775,777-817,819-842,844-948,951-952,954-961,964-966,968,970-972,977-991,997-1003,1062,1082-1272,1274-1277
+  s_be25d4d7f453c1::t_c544c9a87e72f2 843
+  s_be25d4d7f453c1::t_5a1c2464b606dc 323-359
+  s_be25d4d7f453c1::t_e9499595093df2 818
+  s_be25d4d7f453c1::t_4c035f2b0b6b9a 713
+  s_be25d4d7f453c1::t_521ffa94a8c731 62
+  s_be25d4d7f453c1::t_7e70ec3030d316 726
+  s_be25d4d7f453c1::t_b835b949c87c8f 382
+examples/cli/cli.cpp
+  h_82733dd61c3915 1038,1052,1333
+src/whisper.cpp
+  h_82733dd61c3915 3200,3724-3725,7791
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "93040cc4dd57489bac6c7188e19a44c3d7fce0fa",
+  "prompts": {},
+  "logical_commit_id": "93040cc4dd57489bac6c7188e19a44c3d7fce0fa",
+  "humans": {
+    "h_82733dd61c3915": {
+      "author": "liuyang.marshall <liuyang.marshall@bigo.sg>"
+    }
+  },
+  "sessions": {
+    "s_be25d4d7f453c1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f4adf682-25b0-48a1-ae27-fb0d69e025de",
+        "model": "default"
+      },
+      "human_author": "liuyang.marshall <liuyang.marshall@bigo.sg>"
+    }
+  }
+}
