@@ -1,0 +1,20 @@
+docs/whisper_mel_filter.md
+  s_be25d4d7f453c1::t_e43eeca4bac06a 1-338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "4a3d2d6f7ca3bcdd7c24ef1dcbb4b80c5856f480",
+  "prompts": {},
+  "logical_commit_id": "4a3d2d6f7ca3bcdd7c24ef1dcbb4b80c5856f480",
+  "sessions": {
+    "s_be25d4d7f453c1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f4adf682-25b0-48a1-ae27-fb0d69e025de",
+        "model": "default"
+      },
+      "human_author": "liuyang.marshall <liuyang.marshall@bigo.sg>"
+    }
+  }
+}
