@@ -1,0 +1,15 @@
+docs/mel_filters_implement.py
+  h_82733dd61c3915 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "aee74f0ecdd75069c421f574ef4553a8915e4ffa",
+  "prompts": {},
+  "logical_commit_id": "aee74f0ecdd75069c421f574ef4553a8915e4ffa",
+  "humans": {
+    "h_82733dd61c3915": {
+      "author": "liuyang.marshall <liuyang.marshall@bigo.sg>"
+    }
+  }
+}
